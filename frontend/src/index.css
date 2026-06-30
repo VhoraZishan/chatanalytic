@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #080b14;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer utilities {
+  .glow-indigo { box-shadow: 0 0 40px rgba(99, 102, 241, 0.2); }
+  .glow-pink { box-shadow: 0 0 40px rgba(236, 72, 153, 0.2); }
+  .glow-red { box-shadow: 0 0 40px rgba(239, 68, 68, 0.15); }
+  .text-gradient-fire {
+    background: linear-gradient(135deg, #f97316, #ef4444, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-cool {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .card {
+    background: rgba(15, 20, 35, 0.8);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+  }
+  .card-hover {
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .card-hover:hover {
+    border-color: rgba(99,102,241,0.3);
+    transform: translateY(-2px);
+  }
+}
