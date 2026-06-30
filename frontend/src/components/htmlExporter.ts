@@ -1,0 +1,393 @@
+export function exportToHTML(data: any) {
+  const roast = data.ai_roast || {};
+  const profiles = data.user_profiles || {};
+  const isDM = data.chat_mode === 'dm';
+  const title = roast.chat_title || (isDM ? 'DM Analysis' : 'Group Chat Analysis');
+
+  const GRADIENTS = [
+    'linear-gradient(135deg, #4f46e5, #7c3aed)',
+    'linear-gradient(135deg, #ea580c, #dc2626)',
+    'linear-gradient(135deg, #db2777, #e11d48)',
+    'linear-gradient(135deg, #0891b2, #2563eb)',
+    'linear-gradient(135deg, #059669, #0d9488)',
+    'linear-gradient(135deg, #7c3aed, #4f46e5)',
+  ];
+
+  function hashStr(str: string) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    return hash;
+  }
+
+  // --- Monthly timeline bars ---
+  const maxTimelineCount = Math.max(...(data.monthly_timeline || []).map((d: any) => d.count), 1);
+  const timelineBarsHTML = (data.monthly_timeline || []).map((d: any) => {
+    const heightPct = (d.count / maxTimelineCount) * 100;
+    const isPeak = d.count === maxTimelineCount;
+    return `
+      <div class="flex-1 flex flex-col justify-end items-center group relative h-full">
+        <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 text-white text-[10px] font-mono px-2 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+          ${d.count.toLocaleString()}
+        </div>
+        <div class="w-full flex items-end h-full">
+          <div class="w-full rounded-t-sm transition-all duration-700 ${isPeak ? 'bg-gradient-to-t from-orange-600 to-red-500' : 'bg-gradient-to-t from-indigo-800 to-indigo-500'}" style="height: ${Math.max(heightPct, 2)}%"></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const timelineLabelsHTML = (data.monthly_timeline || []).map((d: any) => `
+    <div class="flex-1 text-center text-[9px] text-gray-600 leading-tight">
+      ${d.month.replace(' 20', "<br>'")}
+    </div>
+  `).join('');
+
+  // --- User Profiles ---
+  const userProfilesHTML = (isDM ? roast.person_profiles : roast.user_profiles || []).map((ur: any) => {
+    const stats = profiles[ur.name] || {};
+    const grad = GRADIENTS[Math.abs(hashStr(ur.name)) % GRADIENTS.length];
+    const summary = isDM ? ur.personality_in_this_chat : ur.personality_summary;
+
+    return `
+      <div class="card overflow-hidden card-hover">
+        <div class="p-5 flex items-center gap-4" style="background: ${grad}">
+          <div class="w-12 h-12 rounded-xl bg-black/30 flex items-center justify-center text-white font-black text-xl flex-shrink-0">
+            ${ur.name.substring(0, 2).toUpperCase()}
+          </div>
+          <div class="min-w-0">
+            <p class="text-white/70 text-xs font-semibold uppercase tracking-widest truncate">The title says it all</p>
+            <h3 class="text-white font-black text-lg leading-tight truncate" title="${ur.name}">${ur.name}</h3>
+            <div class="inline-block mt-1 px-2 py-0.5 bg-black/25 rounded-full text-[11px] text-white font-semibold tracking-wide">
+              ${ur.title}
+            </div>
+          </div>
+        </div>
+        <div class="p-5 space-y-5">
+          <p class="text-gray-300 text-[15px] leading-relaxed">${summary || ''}</p>
+          <div class="bg-red-500/5 border border-red-500/15 rounded-xl p-4">
+            <p class="text-red-300 text-sm leading-relaxed italic">💀 ${ur.roast}</p>
+          </div>
+          ${ur.iconic_quote ? `
+            <div class="flex gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
+              <svg class="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
+              <p class="text-gray-400 text-sm italic leading-relaxed">"${ur.iconic_quote}"</p>
+            </div>
+          ` : ''}
+          ${stats.total_messages ? `
+            <div class="grid grid-cols-3 gap-2 pt-1">
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-lg p-2 text-center">
+                <p class="font-mono font-bold text-sm text-white">${stats.total_messages}</p>
+                <p class="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">Messages</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-lg p-2 text-center">
+                <p class="font-mono font-bold text-sm text-white">${stats.share_pct}%</p>
+                <p class="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">Share</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-lg p-2 text-center">
+                <p class="font-mono font-bold text-sm text-white">${stats.late_night_ratio_pct}%</p>
+                <p class="text-[10px] text-gray-600 uppercase tracking-wider mt-0.5">Late Night</p>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // --- Relationship Web (Group mode) ---
+  const relationshipMapHTML = (!isDM && roast.relationship_map || []).map((rel: any) => `
+    <div class="card p-6 space-y-4">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full truncate">${rel.persons?.[0] || ''}</span>
+        <span class="text-yellow-500">⚡</span>
+        <span class="text-sm font-bold text-purple-300 bg-purple-500/10 border border-purple-500/20 px-3 py-1 rounded-full truncate">${rel.persons?.[1] || ''}</span>
+      </div>
+      <h4 class="text-white font-bold text-base">${rel.dynamic_title}</h4>
+      <p class="text-gray-400 text-sm leading-relaxed">${rel.description}</p>
+      ${rel.reply_time_note ? `
+        <div class="bg-yellow-500/5 border border-yellow-500/15 rounded-lg px-4 py-3">
+          <p class="text-yellow-300/80 text-xs font-mono">${rel.reply_time_note}</p>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+
+  // --- Relationship Dynamics (DM mode) ---
+  const relationshipDynamicsHTML = isDM && roast.relationship_dynamics ? Object.entries(roast.relationship_dynamics).map(([key, val]: [string, any]) => {
+    const labels: Record<string, string> = {
+      who_initiates_more: '📨 Who Initiates',
+      reply_asymmetry: '⏱ Reply Asymmetry',
+      attachment_read: '🧠 Attachment Read',
+      the_tension: '🔥 The Tension',
+    };
+    return `
+      <div class="card p-5 space-y-2">
+        <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500">${labels[key] || key}</h4>
+        <p class="text-gray-300 text-sm leading-relaxed">${val}</p>
+      </div>
+    `;
+  }).join('') : '';
+
+  // --- Red/Green Flags (DM mode) ---
+  const redFlagsHTML = (isDM && roast.red_flags || []).map((f: string) => `
+    <li class="text-sm text-gray-400 leading-relaxed flex gap-2">
+      <span class="text-red-500 flex-shrink-0">🚩</span> ${f}
+    </li>
+  `).join('');
+
+  const greenFlagsHTML = (isDM && roast.green_flags || []).map((f: string) => `
+    <li class="text-sm text-gray-400 leading-relaxed flex gap-2">
+      <span class="text-emerald-500 flex-shrink-0">✅</span> ${f}
+    </li>
+  `).join('');
+
+  // --- Notable Events ---
+  const EVENT_COLORS = [
+    'border-orange-500/25 bg-orange-500/5',
+    'border-red-500/25 bg-red-500/5',
+    'border-yellow-500/25 bg-yellow-500/5',
+    'border-pink-500/25 bg-pink-500/5',
+    'border-purple-500/25 bg-purple-500/5',
+  ];
+  const flameColors = ['text-orange-400', 'text-red-400', 'text-yellow-400', 'text-pink-400', 'text-purple-400'];
+
+  const eventsHTML = (roast.hot_moment_summaries || []).map((ev: any, idx: number) => {
+    const colorClass = EVENT_COLORS[idx % EVENT_COLORS.length];
+    const flameColor = flameColors[idx % flameColors.length];
+    return `
+      <div class="card ${colorClass} p-6 space-y-4 border">
+        <div class="flex items-start justify-between gap-4">
+          <div class="space-y-1 min-w-0">
+            <p class="text-gray-500 text-xs font-mono">${ev.date}</p>
+            <h4 class="text-white font-bold text-lg">${ev.event_title}</h4>
+          </div>
+          <span class="text-lg ${flameColor}">🔥</span>
+        </div>
+        <p class="text-gray-300 text-sm leading-relaxed">${ev.summary}</p>
+        ${ev.iconic_moment ? `
+          <div class="flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
+            <svg class="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
+            <p class="text-gray-400 text-sm italic leading-relaxed">"${ev.iconic_moment}"</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Assemble full HTML document template
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} | Chat Analytic</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #080b14;
+      color: #e2e8f0;
+      -webkit-font-smoothing: antialiased;
+    }
+    h1, h2, h3, h4 {
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .card {
+      background: rgba(15, 20, 35, 0.8);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+    }
+    .card-hover:hover {
+      border-color: rgba(99,102,241,0.3);
+      transform: translateY(-2px);
+      transition: all 0.2s ease;
+    }
+  </style>
+</head>
+<body class="py-12 px-4 max-w-5xl mx-auto space-y-16">
+
+  <!-- Header / Cover -->
+  <div class="text-center space-y-3">
+    <p class="text-gray-500 text-sm font-mono">${data.date_range}</p>
+    <h2 class="text-4xl md:text-5xl font-black text-white leading-tight">
+      ${title}
+    </h2>
+    <p class="text-gray-500 text-sm">${data.participants?.join(' · ')}</p>
+    
+    <div class="flex justify-center gap-4 pt-4 flex-wrap text-sm">
+      <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
+        <span class="font-mono font-bold text-white">${data.total_messages?.toLocaleString()}</span>
+        <span class="text-gray-500 text-xs">Total Messages</span>
+      </div>
+      <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
+        <span class="font-mono font-bold text-white">${data.participants?.length}</span>
+        <span class="text-gray-500 text-xs">Participants</span>
+      </div>
+      <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
+        <span class="font-mono font-bold text-white">${data.monthly_timeline?.length}</span>
+        <span class="text-gray-500 text-xs">Months Active</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Timeline Graph -->
+  ${data.monthly_timeline?.length > 0 ? `
+    <div class="space-y-5">
+      <h3 class="text-2xl font-bold text-white">Activity Timeline</h3>
+      <div class="card p-6">
+        <p class="text-xs text-gray-500 uppercase tracking-widest font-semibold mb-4">Messages per Month</p>
+        <div class="flex items-end gap-1.5" style="height: 160px">
+          ${timelineBarsHTML}
+        </div>
+        <div class="flex gap-1.5 mt-3 border-t border-white/5 pt-3">
+          ${timelineLabelsHTML}
+        </div>
+      </div>
+    </div>
+  ` : ''}
+
+  <!-- DM Mode Conditional Sections -->
+  ${isDM ? `
+    <!-- Relationship Essence -->
+    ${roast.relationship_essence ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">What Is This?</h3>
+        <div class="card p-8 space-y-4">
+          <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.relationship_essence}</p>
+          ${roast.compatibility_verdict ? `
+            <div class="flex items-center gap-3 pt-2 border-t border-white/5">
+              <span class="text-pink-400">♥</span>
+              <p class="text-pink-300 font-semibold text-lg italic">${roast.compatibility_verdict}</p>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- The Suspects (DM Profiles) -->
+    <div class="space-y-5">
+      <h3 class="text-2xl font-bold text-white">The Two Of You 🔍</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        ${userProfilesHTML}
+      </div>
+    </div>
+
+    <!-- Relationship Dynamics -->
+    ${relationshipDynamicsHTML ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${relationshipDynamicsHTML}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Flags -->
+    ${(redFlagsHTML || greenFlagsHTML) ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">Flags 🚩</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          ${redFlagsHTML ? `
+            <div class="card p-6 border-red-500/20 space-y-3">
+              <h4 class="text-red-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+                🚩 Red Flags
+              </h4>
+              <ul class="space-y-3">${redFlagsHTML}</ul>
+            </div>
+          ` : ''}
+          ${greenFlagsHTML ? `
+            <div class="card p-6 border-emerald-500/20 space-y-3">
+              <h4 class="text-emerald-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+                ✅ Green Flags
+              </h4>
+              <ul class="space-y-3">${greenFlagsHTML}</ul>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : ''}
+  ` : `
+    <!-- GROUP MODE Conditional Sections -->
+    <!-- Group Essence -->
+    ${roast.group_essence ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">What This Group Actually Is</h3>
+        <div class="card p-8">
+          <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.group_essence}</p>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Group Roast -->
+    ${roast.group_roast ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">The Group Verdict 💀</h3>
+        <div class="card p-8 md:p-12 relative overflow-hidden" style="border-color: rgba(236,72,153,0.2); box-shadow: 0 0 40px rgba(236, 72, 153, 0.1);">
+          <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
+            "${roast.group_roast}"
+          </p>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- The Suspects (Group Profiles) -->
+    <div class="space-y-5">
+      <h3 class="text-2xl font-bold text-white">The Suspects 🔍</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        ${userProfilesHTML}
+      </div>
+    </div>
+
+    <!-- Relationship Map -->
+    ${relationshipMapHTML ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          ${relationshipMapHTML}
+        </div>
+      </div>
+    ` : ''}
+  `}
+
+  <!-- Notable Events (Both Modes) -->
+  ${eventsHTML ? `
+    <div class="space-y-5">
+      <h3 class="text-2xl font-bold text-white">Notable Events 🔥</h3>
+      <div class="space-y-4">
+        ${eventsHTML}
+      </div>
+    </div>
+  ` : ''}
+
+  <!-- Timeline narrative (Both Modes) -->
+  ${roast.group_timeline_narrative ? `
+    <div class="space-y-5">
+      <h3 class="text-2xl font-bold text-white">The Full Story 📖</h3>
+      <div class="card p-8">
+        <p class="text-gray-300 leading-relaxed text-lg">${roast.group_timeline_narrative}</p>
+      </div>
+    </div>
+  ` : ''}
+
+  <!-- Footer Info -->
+  <div class="text-center pt-8 border-t border-white/5 text-xs text-gray-600">
+    Generated by Chat Analytic. Statically archived for offline viewing.
+  </div>
+
+</body>
+</html>
+`;
+
+  // Trigger browser download of offline HTML report
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${title.toLowerCase().replace(/\s+/g, '-')}-report.html`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

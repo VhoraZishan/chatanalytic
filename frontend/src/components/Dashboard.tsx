@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Skull, MessageSquare, Users, CalendarDays, Flame, Heart, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Loader2, Skull, MessageSquare, Users, CalendarDays, Flame, Heart, AlertTriangle, CheckCircle, Download } from 'lucide-react';
 import UserRoastCard from './UserRoastCard';
 import RelationshipCard from './RelationshipCard';
 import EventCard from './EventCard';
 import ActivityChart from './ActivityChart';
+import { exportToHTML } from './htmlExporter';
 
 type Mode = 'dm' | 'group' | null;
 
@@ -65,6 +66,14 @@ export default function Dashboard({ chatId, mode }: { chatId: number, mode: Mode
           <Stat icon={<Users className="w-4 h-4" />} value={data.participants?.length} label="Participants" />
           <Stat icon={<CalendarDays className="w-4 h-4" />} value={data.monthly_timeline?.length} label="Months Active" />
           <Stat icon={<Flame className="w-4 h-4" />} value={roast.hot_moment_summaries?.length || 0} label="Notable Events" />
+        </div>
+        <div className="pt-4">
+          <button
+            onClick={() => exportToHTML(data)}
+            className="px-6 py-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold transition-all text-xs flex items-center gap-2 mx-auto cursor-pointer hover:border-white/20"
+          >
+            <Download className="w-4.5 h-4.5 text-indigo-400" /> Export Offline Report (HTML)
+          </button>
         </div>
       </div>
 
