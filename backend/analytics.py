@@ -1,14 +1,7 @@
-import os
 import json
 import statistics
 from datetime import timedelta, datetime
 from collections import defaultdict
-
-try:
-    from backend.database import get_db_connection
-except ImportError:
-    from database import get_db_connection
-
 
 def _parse_dt(ts):
     if isinstance(ts, str):
@@ -18,25 +11,19 @@ def _parse_dt(ts):
             return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
     return ts
 
-
-def run_analytics(chat_id: int) -> dict:
-    with get_db_connection() as conn:
-        participants = {}
-        for row in conn.execute(
-            "SELECT id, display_name FROM participants WHERE chat_id = ?", (chat_id,)
-        ):
-            participants[row["id"]] = row["display_name"]
-
-        messages = []
-        for row in conn.execute(
-            """SELECT id, sender_id, timestamp, text, message_type
-               FROM messages WHERE chat_id = ? ORDER BY timestamp ASC""",
-            (chat_id,),
-        ):
-            messages.append(dict(row))
+def run_analytics(chat_data: dict) -> dict:
+    """
+    Runs in-memory analytics over the parsed message dictionary.
+    No SQLite database connections are used.
+    """
+    messages = chat_data["messages"]
+    chat_mode = chat_data["chat_mode"]
+    chat_name = chat_data["chat_name"]
 
     if not messages:
         return {"error": "No messages found"}
+
+    total_msgs = len(messages)
 
     # ── 1. Per-User Stats ─────────────────────────────────────────────────────
     user_data = defaultdict(lambda: {
@@ -46,14 +33,15 @@ def run_analytics(chat_id: int) -> dict:
     })
 
     for i, msg in enumerate(messages):
-        sid = msg["sender_id"]
-        if sid is None:
+        sender = msg["sender"]
+        if sender == "SYSTEM":
             continue
-        ud = user_data[sid]
+        ud = user_data[sender]
         ud["msg_count"] += 1
-        if msg["message_type"] == "text" and msg["text"]:
+        
+        if msg["type"] == "text" and msg["text"]:
             ud["word_count"] += len(msg["text"].split())
-        elif msg["message_type"] == "media":
+        elif msg["type"] == "media":
             ud["media_count"] += 1
 
         dt = _parse_dt(msg["timestamp"])
@@ -63,28 +51,26 @@ def run_analytics(chat_id: int) -> dict:
 
         if i > 0:
             prev = messages[i - 1]
-            if prev["sender_id"] is not None:
+            if prev["sender"] != "SYSTEM":
                 gap = dt - _parse_dt(prev["timestamp"])
                 if gap >= timedelta(hours=2):
                     ud["initiations"] += 1
 
     for i in range(1, len(messages)):
         curr, prev = messages[i], messages[i - 1]
-        if None in (curr["sender_id"], prev["sender_id"]):
+        if "SYSTEM" in (curr["sender"], prev["sender"]):
             continue
-        if curr["sender_id"] != prev["sender_id"]:
+        if curr["sender"] != prev["sender"]:
             gap = _parse_dt(curr["timestamp"]) - _parse_dt(prev["timestamp"])
             if gap >= timedelta(hours=6):
-                user_data[prev["sender_id"]]["ignored_count"] += 1
+                user_data[prev["sender"]]["ignored_count"] += 1
 
-    total_msgs = len(messages)
     user_profiles = {}
-    for sid, data in user_data.items():
+    for sender, data in user_data.items():
         if data["msg_count"] < 5:
             continue
-        name = participants[sid]
         peak_hour = max(data["hour_buckets"], key=data["hour_buckets"].get, default=12)
-        user_profiles[name] = {
+        user_profiles[sender] = {
             "total_messages": data["msg_count"],
             "share_pct": round(data["msg_count"] / total_msgs * 100, 1),
             "avg_msg_length_words": round(data["word_count"] / data["msg_count"], 1) if data["msg_count"] else 0,
@@ -99,21 +85,19 @@ def run_analytics(chat_id: int) -> dict:
     pair_reply_times = defaultdict(lambda: defaultdict(list))
     for i in range(1, len(messages)):
         curr, prev = messages[i], messages[i - 1]
-        a_id, b_id = prev["sender_id"], curr["sender_id"]
-        if None in (a_id, b_id) or a_id == b_id:
+        a_name, b_name = prev["sender"], curr["sender"]
+        if "SYSTEM" in (a_name, b_name) or a_name == b_name:
             continue
         gap = (_parse_dt(curr["timestamp"]) - _parse_dt(prev["timestamp"])).total_seconds()
         if 0 < gap < 10800:
-            pair_reply_times[a_id][b_id].append(gap)
+            pair_reply_times[a_name][b_name].append(gap)
 
     relationship_matrix = []
-    for a_id, replies in pair_reply_times.items():
-        for b_id, times in replies.items():
+    for a_name, replies in pair_reply_times.items():
+        for b_name, times in replies.items():
             if len(times) < 3:
                 continue
             avg_secs = statistics.mean(times)
-            a_name = participants.get(a_id, "Unknown")
-            b_name = participants.get(b_id, "Unknown")
             relationship_matrix.append({
                 "person_a": a_name,
                 "person_b": b_name,
@@ -126,7 +110,7 @@ def run_analytics(chat_id: int) -> dict:
     # ── 3. Hot Day Detection (24-hour buckets) ────────────────────────────────
     text_messages = [
         m for m in messages
-        if m["message_type"] in ("text", "media") and m["text"] and m["sender_id"] is not None
+        if m["type"] in ("text", "media") and m["text"] and m["sender"] != "SYSTEM"
     ]
 
     day_buckets = defaultdict(list)
@@ -136,7 +120,6 @@ def run_analytics(chat_id: int) -> dict:
 
     avg_day_density = len(text_messages) / max(len(day_buckets), 1)
 
-    # Find top hot days (≥ 2x avg and at least 20 messages)
     hot_days = sorted(
         [(day, msgs) for day, msgs in day_buckets.items()
          if len(msgs) >= max(20, avg_day_density * 1.8)],
@@ -146,14 +129,13 @@ def run_analytics(chat_id: int) -> dict:
     hot_moments = []
     for day, day_msgs in hot_days:
         dt_label = datetime.strptime(day, "%Y-%m-%d").strftime("%d %b %Y")
-        # Spread 30 samples across the day
         step = max(1, len(day_msgs) // 30)
         sampled = day_msgs[::step][:30]
         hot_moments.append({
             "date": dt_label,
             "message_count": len(day_msgs),
             "sample_messages": [
-                {"sender": participants.get(m["sender_id"], "?"), "text": m["text"][:200]}
+                {"sender": m["sender"], "text": m["text"][:200]}
                 for m in sampled
             ],
         })
@@ -172,11 +154,9 @@ def run_analytics(chat_id: int) -> dict:
     monthly_timeline = [{"month": k, "count": month_counts[k]} for k in month_order]
 
     # ── 5. Per-Person Balanced Message Sample ────────────────────────────────
-    # Ensure EVERY participant gets represented — 15 msgs per person max
     per_person = defaultdict(list)
     for m in text_messages:
-        name = participants.get(m["sender_id"], "?")
-        per_person[name].append(m)
+        per_person[m["sender"]].append(m)
 
     llm_message_sample = []
     for name, msgs in per_person.items():
@@ -188,9 +168,8 @@ def run_analytics(chat_id: int) -> dict:
                 "text": m["text"][:200],
             })
 
-    # Also add 20 chronologically recent messages for current-state context
     recent = [
-        {"sender": participants.get(m["sender_id"], "?"), "text": m["text"][:200]}
+        {"sender": m["sender"], "text": m["text"][:200]}
         for m in text_messages[-20:]
     ]
     llm_message_sample.extend(recent)
@@ -200,7 +179,8 @@ def run_analytics(chat_id: int) -> dict:
     d2 = _parse_dt(messages[-1]["timestamp"]).strftime("%d %b %Y")
 
     return {
-        "chat_id": chat_id,
+        "chat_name": chat_name,
+        "chat_mode": chat_mode,
         "total_messages": total_msgs,
         "date_range": f"{d1} → {d2}",
         "participants": list(user_profiles.keys()),
@@ -210,11 +190,3 @@ def run_analytics(chat_id: int) -> dict:
         "monthly_timeline": monthly_timeline,
         "llm_message_sample": llm_message_sample,
     }
-
-
-if __name__ == "__main__":
-    result = run_analytics(1)
-    display = {k: v for k, v in result.items() if k != "llm_message_sample"}
-    display["llm_message_sample_count"] = len(result.get("llm_message_sample", []))
-    display["hot_days"] = [(hm["date"], hm["message_count"]) for hm in result.get("hot_moments", [])]
-    print(json.dumps(display, indent=2))

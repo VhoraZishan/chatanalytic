@@ -5,11 +5,11 @@ import Dashboard from './components/Dashboard';
 type Mode = 'dm' | 'group' | null;
 
 function App() {
-  const [chatId, setChatId] = useState<number | null>(null);
+  const [reportData, setReportData] = useState<any>(null);
   const [mode, setMode] = useState<Mode>(null);
 
-  const handleUploadComplete = (id: number, m: Mode) => {
-    setChatId(id);
+  const handleUploadComplete = (data: any, m: Mode) => {
+    setReportData(data);
     setMode(m);
   };
 
@@ -29,10 +29,10 @@ function App() {
               </span>
             )}
           </div>
-          {chatId && (
+          {reportData && (
             <button
-              onClick={() => { setChatId(null); setMode(null); }}
-              className="text-sm text-gray-500 hover:text-white transition-colors"
+              onClick={() => { setReportData(null); setMode(null); }}
+              className="text-sm text-gray-500 hover:text-white transition-colors cursor-pointer"
             >
               ← Analyze Another Chat
             </button>
@@ -41,9 +41,9 @@ function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8">
-        {!chatId
+        {!reportData
           ? <UploadDropzone onUploadComplete={handleUploadComplete} />
-          : <Dashboard chatId={chatId} mode={mode} />
+          : <Dashboard reportData={reportData} mode={mode} />
         }
       </main>
     </div>

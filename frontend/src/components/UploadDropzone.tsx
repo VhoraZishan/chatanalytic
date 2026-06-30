@@ -4,7 +4,7 @@ import { UploadCloud, Loader2, ShieldCheck, Zap, Quote, MessageCircle, Users } f
 type Mode = 'dm' | 'group' | null;
 
 interface Props {
-  onUploadComplete: (chatId: number, mode: Mode) => void;
+  onUploadComplete: (reportData: any, mode: Mode) => void;
 }
 
 export default function UploadDropzone({ onUploadComplete }: Props) {
@@ -27,7 +27,7 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
       const res = await fetch('http://127.0.0.1:8000/upload', { method: 'POST', body: formData });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
       const data = await res.json();
-      onUploadComplete(data.chat_id, mode);
+      onUploadComplete(data, mode);
     } catch (err: any) {
       setError(err.message || 'An error occurred.');
     } finally {
@@ -106,7 +106,7 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
 
           <div className="relative z-10">
             <h3 className="text-lg font-semibold text-white mb-1">
-              {isUploading ? 'Parsing your chat...' : 'Step 2 — Drop your WhatsApp .txt here'}
+              {isUploading ? 'Analyzing chat & generating roasts (~15 seconds)...' : 'Step 2 — Drop your WhatsApp .txt here'}
             </h3>
             <p className="text-gray-500 text-sm">
               Export from WhatsApp → Chat Settings → Export Chat (Without Media)

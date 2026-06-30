@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Loader2, Skull, MessageSquare, Users, CalendarDays, Flame, Heart, AlertTriangle, CheckCircle, Download } from 'lucide-react';
 import UserRoastCard from './UserRoastCard';
 import RelationshipCard from './RelationshipCard';
@@ -8,45 +7,8 @@ import { exportToHTML } from './htmlExporter';
 
 type Mode = 'dm' | 'group' | null;
 
-export default function Dashboard({ chatId, mode }: { chatId: number, mode: Mode }) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`http://127.0.0.1:8000/report/${chatId}`);
-        if (!res.ok) throw new Error('Failed to fetch report');
-        setData(await res.json());
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [chatId]);
-
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-40 gap-5">
-      <div className="relative">
-        <div className="w-16 h-16 rounded-full border-2 border-indigo-500/20 animate-ping absolute inset-0" />
-        <Loader2 className="w-16 h-16 text-indigo-500 animate-spin relative z-10" />
-      </div>
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-white mb-2">Gemini is reading your chats...</h2>
-        <p className="text-gray-500">Analyzing personalities, detecting drama, writing roasts. ~15 seconds.</p>
-      </div>
-    </div>
-  );
-
-  if (error || !data) return (
-    <div className="text-center py-20 text-red-400 space-y-2">
-      <p className="text-xl font-bold">Something went wrong</p>
-      <p className="text-sm opacity-70">{error || 'Could not load'}</p>
-    </div>
-  );
-
+export default function Dashboard({ reportData, mode }: { reportData: any, mode: Mode }) {
+  const data = reportData;
   const roast = data.ai_roast || {};
   const profiles = data.user_profiles || {};
   const isDM = (data.chat_mode || mode) === 'dm';
