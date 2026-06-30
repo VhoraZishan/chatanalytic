@@ -50,7 +50,67 @@ HOT MOMENTS (most explosive bursts of activity):
 {"---".join(hot_moments_readable)}
 """
 
-    if chat_mode == "dm":
+    if chat_mode == "ego":
+        clips_text_list = []
+        for chat_clip in analytics_payload.get("chat_clips", []):
+            chat_name = chat_clip["chat_name"]
+            for idx, clip in enumerate(chat_clip["clips"]):
+                clip_lines = []
+                for m in clip["clip_msgs"]:
+                    if m["type"] == "media":
+                        clip_lines.append(f"  {m['sender']}: <Media omitted>")
+                    else:
+                        clip_lines.append(f"  {m['sender']}: {m['text']}")
+                clips_text_list.append(f"[{chat_name} - Conversation Sample #{idx+1}]:\n" + "\n".join(clip_lines))
+        clips_text = "\n\n".join(clips_text_list)
+        
+        prompt = f"""
+You are a savage, no-holds-barred AI social profiling analyst. Your job is to brutally analyze the target user's messaging behavior, language style, and social standing across multiple chats, and invent a hilarious, cutting social profile.
+
+You are profiling the user who goes by the names: {analytics_payload.get("user_aliases")}
+
+WRITING STYLE REQUIREMENT: Write the entire analysis strictly in the third person. Refer to the analyzed user by their name/alias (e.g. Zishan) instead of using "you" or "your". The analysis must talk *about* them in the third person to keep the report completely anonymous.
+
+LANGUAGE NOTE: Messages may be in Gujarati, Hindi, English, or mixed Hinglish. Read and understand them all natively. Pay close attention to their tone, slangs, Gujaratiness, Hinglish expressions, abbreviations, and overall texting style.
+
+MEDIA NOTE: The chats have no actual images/videos, represented as `<Media omitted>`. Factor this in! 
+
+TONE: Brutally honest. Savage. Psychological profiling. Name specific behavioral habits (e.g. overyapping, needy response times, double texting, Gujarati slangs). Quote real messages from their samples.
+
+---
+EGO STATS (overall metrics for this user):
+{json.dumps(analytics_payload.get("ego_stats"), indent=2)}
+
+---
+CHAT SUMMARIES (how they participate in different chats):
+{json.dumps(analytics_payload.get("chat_summaries"), indent=2)}
+
+---
+CHRONOLOGICAL CONVERSATION CLIPS (to see how they interact back-and-forth):
+{clips_text}
+
+---
+OUTPUT THIS EXACT JSON (raw JSON only, absolutely no markdown fences or backticks):
+
+{{
+  "chat_title": "A short savage title for this user's social identity. Max 6 words. e.g. 'The Group Chat Main Character', 'The Needy Double-Texter Who Thinks They Are Cool'.",
+  "ego_essence": "2-3 sentences. What is this user's general vibe across their chats? Who do they think they are vs who they actually are?",
+  "compatibility_verdict": "One sentence summary of their relationship standing. e.g. 'Highly responsive, but gets left on read because they yap too much.'",
+  "personality_summary": "3-4 sentences. A detailed, savage psychological profile of their text communication patterns based on the quotes and reply speeds.",
+  "roast": "2-3 sentences of pure roast targeting their text behaviors, referencing real quotes from what they sent.",
+  "iconic_quote": "The single most representative verbatim quote sent by them from the samples that shows their essence.",
+  "flags": [
+    {{
+      "type": "red",
+      "behavior": "A specific texting habit e.g., 'Aggressive Double-Texting'",
+      "proof": "Evidence from their quotes or behavior."
+    }}
+  ],
+  "dynamics_summary": "A 2-3 sentence analysis of their response time matrix. Do they chase people? Do they ignore people?",
+  "group_timeline_narrative": "A short summary of their text frequency timeline. Did they peak and die? Are they a consistent spammer?"
+}}
+"""
+    elif chat_mode == "dm":
         prompt = f"""
 You are a savage, no-holds-barred relationship analyst — like a therapist who has zero filter and has read every single message in this 1-on-1 private conversation.
 

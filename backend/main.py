@@ -20,37 +20,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from typing import List
+
 @app.post("/upload")
-async def upload_chat(file: UploadFile = File(...), chat_mode: str = Form("group")):
+async def upload_chat(
+    files: List[UploadFile] = File(...), 
+    chat_mode: str = Form("group"),
+    user_names: str = Form("")
+):
     """
-    Handles uploading a WhatsApp .txt export.
-    Parses, runs analytics, queries Gemini, and returns the report in a single ephemeral request.
+    Handles uploading one or more WhatsApp .txt exports.
+    chat_mode: 'dm', 'group', or 'ego'.
+    user_names: Comma-separated names for Ego mode profiling.
     """
-    if not file.filename.endswith('.txt'):
-        raise HTTPException(status_code=400, detail="Only .txt files are supported")
-    if chat_mode not in ("dm", "group"):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    if chat_mode not in ("dm", "group", "ego"):
         chat_mode = "group"
 
-    temp_path = f"temp_{file.filename}"
+    temp_paths = []
+    parsed_chats = []
     try:
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        for file in files:
+            if not file.filename.endswith('.txt'):
+                raise HTTPException(status_code=400, detail="Only .txt files are supported")
+            
+            temp_path = f"temp_{file.filename}"
+            temp_paths.append(temp_path)
+            with open(temp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
-        # 1. Parse chat in-memory
-        chat_data = parse_whatsapp_chat(temp_path, file.filename.replace('.txt', ''), chat_mode)
-        
-        # 2. Run in-memory analytics
-        payload = run_analytics(chat_data)
+            chat_data = parse_whatsapp_chat(temp_path, file.filename.replace('.txt', ''), chat_mode)
+            parsed_chats.append(chat_data)
+
+        # 2. Run appropriate analytics engine
+        if chat_mode == "ego":
+            aliases = [n.strip() for n in user_names.split(",") if n.strip()]
+            if not aliases:
+                raise HTTPException(status_code=400, detail="Ego Profile mode requires entering your chat name(s)")
+            from analytics import run_ego_analytics
+            payload = run_ego_analytics(parsed_chats, aliases)
+        else:
+            payload = run_analytics(parsed_chats[0])
+
         if "error" in payload:
             raise HTTPException(status_code=400, detail=payload["error"])
-            
+
         # 3. Call Gemini to generate the roasts
         try:
             commentary = generate_report_commentary(payload, chat_mode=chat_mode)
         except Exception as e:
             print(f"Failed to generate commentary: {e}")
             commentary = {}
-            
+
         # 4. Merge roasts directly into the response payload
         payload['ai_roast'] = commentary
         return payload
@@ -58,6 +80,8 @@ async def upload_chat(file: UploadFile = File(...), chat_mode: str = Form("group
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Privacy: Delete raw uploaded chat file from disk immediately
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        # Privacy: Delete all raw uploaded chat files from disk immediately
+        for temp_path in temp_paths:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+

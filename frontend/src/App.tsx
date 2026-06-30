@@ -24,8 +24,8 @@ function App() {
             <span className="text-lg font-bold tracking-tight text-white">Chat Analytic</span>
             {mode && (
               <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-1
-                ${mode === 'dm' ? 'bg-pink-500/15 text-pink-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
-                {mode === 'dm' ? 'DM' : 'Group'}
+                ${mode === 'dm' ? 'bg-pink-500/15 text-pink-400' : mode === 'ego' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                {mode === 'dm' ? 'DM' : mode === 'ego' ? 'Profile' : 'Group'}
               </span>
             )}
           </div>

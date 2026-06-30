@@ -2,7 +2,10 @@ export function exportToHTML(data: any) {
   const roast = data.ai_roast || {};
   const profiles = data.user_profiles || {};
   const isDM = data.chat_mode === 'dm';
-  const title = roast.chat_title || (isDM ? 'DM Analysis' : 'Group Chat Analysis');
+  const isEgo = data.chat_mode === 'ego';
+  const isGroup = !isDM && !isEgo;
+  const targetName = data.user_aliases?.[0] || 'Target';
+  const title = roast.chat_title || (isDM ? 'DM Analysis' : isEgo ? `${targetName}'s Profile` : 'Group Chat Analysis');
 
   const GRADIENTS = [
     'linear-gradient(135deg, #4f46e5, #7c3aed)',
@@ -42,8 +45,8 @@ export function exportToHTML(data: any) {
     </div>
   `).join('');
 
-  // --- User Profiles ---
-  const userProfilesHTML = (isDM ? roast.person_profiles : roast.user_profiles || []).map((ur: any) => {
+  // --- User Profiles (Group/DM mode only) ---
+  const userProfilesHTML = (!isEgo ? (isDM ? roast.person_profiles : roast.user_profiles || []).map((ur: any) => {
     const stats = profiles[ur.name] || {};
     const grad = GRADIENTS[Math.abs(hashStr(ur.name)) % GRADIENTS.length];
     const summary = isDM ? ur.personality_in_this_chat : ur.personality_summary;
@@ -92,10 +95,10 @@ export function exportToHTML(data: any) {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') : '');
 
   // --- Relationship Web (Group mode) ---
-  const relationshipMapHTML = (!isDM && roast.relationship_map || []).map((rel: any) => `
+  const relationshipMapHTML = (isGroup && roast.relationship_map || []).map((rel: any) => `
     <div class="card p-6 space-y-4">
       <div class="flex items-center gap-3">
         <span class="text-sm font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full truncate">${rel.persons?.[0] || ''}</span>
@@ -139,6 +142,43 @@ export function exportToHTML(data: any) {
     <li class="text-sm text-gray-400 leading-relaxed flex gap-2">
       <span class="text-emerald-500 flex-shrink-0">✅</span> ${f}
     </li>
+  `).join('');
+
+  // --- Behavioral Flags (Ego mode) ---
+  const egoFlagsHTML = (isEgo && roast.flags || []).map((f: any) => {
+    const isRed = typeof f === 'object' ? f.type === 'red' : String(f).toLowerCase().includes('red');
+    const behavior = typeof f === 'object' ? f.behavior : f;
+    const proof = typeof f === 'object' ? f.proof : '';
+    return `
+      <div class="card p-5 border ${isRed ? 'border-red-500/25 bg-red-500/5' : 'border-emerald-500/25 bg-emerald-500/5'} space-y-2">
+        <h4 class="text-sm font-bold uppercase tracking-wider ${isRed ? 'text-red-400' : 'text-emerald-400'}">
+          ${isRed ? '🚩 Red Flag' : '✅ Green Flag'}: ${behavior}
+        </h4>
+        ${proof ? `<p class="text-gray-400 text-sm leading-relaxed mt-2 italic">"${proof}"</p>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // --- Social Circles Breakdown (Ego mode) ---
+  const socialCirclesHTML = (isEgo && data.chat_summaries || []).map((summary: any) => `
+    <div class="card p-5 space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <h4 class="text-white font-bold text-base truncate">${summary.chat_name}</h4>
+        <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${summary.chat_mode === 'dm' ? 'bg-pink-500/15 text-pink-400' : 'bg-indigo-500/15 text-indigo-400'}">
+          ${summary.chat_mode === 'dm' ? 'DM' : 'Group'}
+        </span>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div class="bg-black/20 p-2 rounded-lg border border-white/5">
+          <p class="text-gray-500">Sent by ${targetName}</p>
+          <p class="text-white font-bold font-mono text-sm mt-0.5">${summary.messages_sent_by_you}</p>
+        </div>
+        <div class="bg-black/20 p-2 rounded-lg border border-white/5">
+          <p class="text-gray-500">Share %</p>
+          <p class="text-white font-bold font-mono text-sm mt-0.5">${summary.your_share_pct}%</p>
+        </div>
+      </div>
+    </div>
   `).join('');
 
   // --- Notable Events ---
@@ -215,17 +255,31 @@ export function exportToHTML(data: any) {
     <h2 class="text-4xl md:text-5xl font-black text-white leading-tight">
       ${title}
     </h2>
-    <p class="text-gray-500 text-sm">${data.participants?.join(' · ')}</p>
+    <p class="text-gray-500 text-sm">
+      ${isEgo 
+        ? `${targetName}'s Profile across ${data.chat_summaries?.length} chats`
+        : data.participants?.join(' · ')
+      }
+    </p>
     
     <div class="flex justify-center gap-4 pt-4 flex-wrap text-sm">
       <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
-        <span class="font-mono font-bold text-white">${data.total_messages?.toLocaleString()}</span>
+        <span class="font-mono font-bold text-white">
+          ${(isEgo ? data.total_messages_analyzed : data.total_messages)?.toLocaleString()}
+        </span>
         <span class="text-gray-500 text-xs">Total Messages</span>
       </div>
-      <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
-        <span class="font-mono font-bold text-white">${data.participants?.length}</span>
-        <span class="text-gray-500 text-xs">Participants</span>
-      </div>
+      ${!isEgo ? `
+        <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
+          <span class="font-mono font-bold text-white">${data.participants?.length}</span>
+          <span class="text-gray-500 text-xs">Participants</span>
+        </div>
+      ` : `
+        <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
+          <span class="font-mono font-bold text-white">${data.chat_summaries?.length}</span>
+          <span class="text-gray-500 text-xs">Circles Analyzed</span>
+        </div>
+      `}
       <div class="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] px-5 py-2.5 rounded-full">
         <span class="font-mono font-bold text-white">${data.monthly_timeline?.length}</span>
         <span class="text-gray-500 text-xs">Months Active</span>
@@ -249,111 +303,222 @@ export function exportToHTML(data: any) {
     </div>
   ` : ''}
 
-  <!-- DM Mode Conditional Sections -->
-  ${isDM ? `
-    <!-- Relationship Essence -->
-    ${roast.relationship_essence ? `
+  <!-- Ego Mode Layout -->
+  ${isEgo ? `
+    <!-- What They Actually Think of Target -->
+    ${roast.ego_essence ? `
       <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">What Is This?</h3>
+        <h3 class="text-2xl font-bold text-white">What People Think of ${targetName}</h3>
         <div class="card p-8 space-y-4">
-          <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.relationship_essence}</p>
+          <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.ego_essence}</p>
           ${roast.compatibility_verdict ? `
             <div class="flex items-center gap-3 pt-2 border-t border-white/5">
-              <span class="text-pink-400">♥</span>
-              <p class="text-pink-300 font-semibold text-lg italic">${roast.compatibility_verdict}</p>
+              <span class="text-amber-400">♥</span>
+              <p class="text-amber-300 font-semibold text-lg italic">${roast.compatibility_verdict}</p>
             </div>
           ` : ''}
         </div>
       </div>
     ` : ''}
 
-    <!-- The Suspects (DM Profiles) -->
-    <div class="space-y-5">
-      <h3 class="text-2xl font-bold text-white">The Two Of You 🔍</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        ${userProfilesHTML}
-      </div>
-    </div>
-
-    <!-- Relationship Dynamics -->
-    ${relationshipDynamicsHTML ? `
+    <!-- Ego Roast Card -->
+    ${roast.roast ? `
       <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${relationshipDynamicsHTML}
+        <h3 class="text-2xl font-bold text-white">The Verdict 💀</h3>
+        <div class="card p-8 md:p-12 relative overflow-hidden border-red-500/20 bg-red-500/5">
+          <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed italic">
+            "${roast.roast}"
+          </p>
+          ${roast.iconic_quote ? `
+            <div class="mt-6 flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
+              <span class="text-gray-600 text-lg">“</span>
+              <p class="text-gray-400 text-sm italic leading-relaxed">"${roast.iconic_quote}"</p>
+            </div>
+          ` : ''}
         </div>
       </div>
     ` : ''}
 
-    <!-- Flags -->
-    ${(redFlagsHTML || greenFlagsHTML) ? `
+    <!-- Psychological Profile -->
+    ${roast.personality_summary ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">Psychological Profile</h3>
+        <div class="card p-8 space-y-6">
+          <p class="text-gray-300 leading-relaxed text-lg">${roast.personality_summary}</p>
+          
+          ${data.ego_stats ? `
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/5 text-center text-xs">
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.total_messages_sent}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Total Sent</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.overall_share_pct}%</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Share</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.avg_message_length_words} words</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Avg Length</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.late_night_ratio_pct}%</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Late Night</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.conversation_initiations}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Initiations</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.avg_reply_time_to_you_mins ? `${data.ego_stats.avg_reply_time_to_you_mins}m` : 'N/A'}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Reply to ${targetName}</p>
+              </div>
+              <div class="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3">
+                <p class="font-mono font-bold text-sm text-white">${data.ego_stats.avg_reply_time_by_you_mins ? `${data.ego_stats.avg_reply_time_by_you_mins}m` : 'N/A'}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Reply by ${targetName}</p>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Behavioral Flags -->
+    ${egoFlagsHTML ? `
       <div class="space-y-5">
         <h3 class="text-2xl font-bold text-white">Flags 🚩</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          ${redFlagsHTML ? `
-            <div class="card p-6 border-red-500/20 space-y-3">
-              <h4 class="text-red-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                🚩 Red Flags
-              </h4>
-              <ul class="space-y-3">${redFlagsHTML}</ul>
-            </div>
-          ` : ''}
-          ${greenFlagsHTML ? `
-            <div class="card p-6 border-emerald-500/20 space-y-3">
-              <h4 class="text-emerald-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                ✅ Green Flags
-              </h4>
-              <ul class="space-y-3">${greenFlagsHTML}</ul>
-            </div>
-          ` : ''}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${egoFlagsHTML}
         </div>
       </div>
     ` : ''}
+
+    <!-- Social Circles Breakdown -->
+    ${socialCirclesHTML ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">Social Circles Breakdown</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${socialCirclesHTML}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Dynamics Summary -->
+    ${roast.dynamics_summary ? `
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">Social Dynamics Readout</h3>
+        <div class="card p-6">
+          <p class="text-gray-300 leading-relaxed text-[15px]">${roast.dynamics_summary}</p>
+        </div>
+      </div>
+    ` : ''}
+
   ` : `
-    <!-- GROUP MODE Conditional Sections -->
-    <!-- Group Essence -->
-    ${roast.group_essence ? `
-      <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">What This Group Actually Is</h3>
-        <div class="card p-8">
-          <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.group_essence}</p>
+    <!-- DM or Group Mode Layout -->
+    ${isDM ? `
+      <!-- Relationship Essence -->
+      ${roast.relationship_essence ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">What Is This?</h3>
+          <div class="card p-8 space-y-4">
+            <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.relationship_essence}</p>
+            ${roast.compatibility_verdict ? `
+              <div class="flex items-center gap-3 pt-2 border-t border-white/5">
+                <span class="text-pink-400">♥</span>
+                <p class="text-pink-300 font-semibold text-lg italic">${roast.compatibility_verdict}</p>
+              </div>
+            ` : ''}
+          </div>
         </div>
-      </div>
-    ` : ''}
+      ` : ''}
 
-    <!-- Group Roast -->
-    ${roast.group_roast ? `
+      <!-- The Two Of You (DM Profiles) -->
       <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">The Group Verdict 💀</h3>
-        <div class="card p-8 md:p-12 relative overflow-hidden" style="border-color: rgba(236,72,153,0.2); box-shadow: 0 0 40px rgba(236, 72, 153, 0.1);">
-          <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
-            "${roast.group_roast}"
-          </p>
-        </div>
-      </div>
-    ` : ''}
-
-    <!-- The Suspects (Group Profiles) -->
-    <div class="space-y-5">
-      <h3 class="text-2xl font-bold text-white">The Suspects 🔍</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        ${userProfilesHTML}
-      </div>
-    </div>
-
-    <!-- Relationship Map -->
-    ${relationshipMapHTML ? `
-      <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
+        <h3 class="text-2xl font-bold text-white">The Two Of You 🔍</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          ${relationshipMapHTML}
+          ${userProfilesHTML}
         </div>
       </div>
-    ` : ''}
+
+      <!-- Relationship Dynamics -->
+      ${relationshipDynamicsHTML ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${relationshipDynamicsHTML}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Flags -->
+      ${(redFlagsHTML || greenFlagsHTML) ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">Flags 🚩</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            ${redFlagsHTML ? `
+              <div class="card p-6 border-red-500/20 space-y-3">
+                <h4 class="text-red-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+                  🚩 Red Flags
+                </h4>
+                <ul class="space-y-3">${redFlagsHTML}</ul>
+              </div>
+            ` : ''}
+            ${greenFlagsHTML ? `
+              <div class="card p-6 border-emerald-500/20 space-y-3">
+                <h4 class="text-emerald-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+                  ✅ Green Flags
+                </h4>
+                <ul class="space-y-3">${greenFlagsHTML}</ul>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : ''}
+    ` : `
+      <!-- GROUP MODE Conditional Sections -->
+      <!-- Group Essence -->
+      ${roast.group_essence ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">What This Group Actually Is</h3>
+          <div class="card p-8">
+            <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.group_essence}</p>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Group Roast -->
+      ${roast.group_roast ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">The Group Verdict 💀</h3>
+          <div class="card p-8 md:p-12 relative overflow-hidden" style="border-color: rgba(236,72,153,0.2); box-shadow: 0 0 40px rgba(236, 72, 153, 0.1);">
+            <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
+              "${roast.group_roast}"
+            </p>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- The Suspects (Group Profiles) -->
+      <div class="space-y-5">
+        <h3 class="text-2xl font-bold text-white">The Suspects 🔍</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          ${userProfilesHTML}
+        </div>
+      </div>
+
+      <!-- Relationship Map -->
+      ${relationshipMapHTML ? `
+        <div class="space-y-5">
+          <h3 class="text-2xl font-bold text-white">The Dynamics ⚡</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            ${relationshipMapHTML}
+          </div>
+        </div>
+      ` : ''}
+    `}
   `}
 
-  <!-- Notable Events (Both Modes) -->
-  ${eventsHTML ? `
+  <!-- Notable Events (Both Modes, skipped in Ego Mode as we don't extract events there) -->
+  ${(!isEgo && eventsHTML) ? `
     <div class="space-y-5">
       <h3 class="text-2xl font-bold text-white">Notable Events 🔥</h3>
       <div class="space-y-4">

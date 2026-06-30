@@ -190,3 +190,155 @@ def run_analytics(chat_data: dict) -> dict:
         "monthly_timeline": monthly_timeline,
         "llm_message_sample": llm_message_sample,
     }
+
+def run_ego_analytics(chats: list[dict], user_aliases: list[str]) -> dict:
+    """
+    Aggregates stats across multiple chats to profile a specific target user.
+    Uses chronological clips of back-and-forth conversation surrounding target user messages.
+    """
+    aliases = [a.lower().strip() for a in user_aliases if a.strip()]
+    if not aliases:
+        return {"error": "No user aliases provided"}
+        
+    def is_target(name):
+        return name.lower().strip() in aliases
+        
+    total_messages_all = 0
+    chat_summaries = []
+    
+    # Aggregated stats for target user
+    total_sent = 0
+    total_words_sent = 0
+    total_media_sent = 0
+    total_late_night = 0
+    total_initiations = 0
+    total_ignored = 0
+    
+    reply_times_to_target = []
+    reply_times_by_target = []
+    
+    for chat in chats:
+        messages = chat["messages"]
+        chat_name = chat["chat_name"]
+        chat_mode = chat["chat_mode"]
+        
+        chat_sent = 0
+        chat_total = len(messages)
+        total_messages_all += chat_total
+        
+        for i, m in enumerate(messages):
+            sender = m["sender"]
+            if sender == "SYSTEM":
+                continue
+            
+            sender_is_target = is_target(sender)
+            
+            if sender_is_target:
+                chat_sent += 1
+                total_sent += 1
+                if m["type"] == "text" and m["text"]:
+                    total_words_sent += len(m["text"].split())
+                elif m["type"] == "media":
+                    total_media_sent += 1
+                    
+                dt = _parse_dt(m["timestamp"])
+                if 0 <= dt.hour < 4:
+                    total_late_night += 1
+                    
+                if i > 0:
+                    prev = messages[i-1]
+                    if prev["sender"] != "SYSTEM" and not is_target(prev["sender"]):
+                        gap = dt - _parse_dt(prev["timestamp"])
+                        if gap >= timedelta(hours=2):
+                            total_initiations += 1
+            
+            if i > 0:
+                prev = messages[i-1]
+                curr = messages[i]
+                sender_a, sender_b = prev["sender"], curr["sender"]
+                if "SYSTEM" in (sender_a, sender_b) or sender_a == sender_b:
+                    continue
+                
+                gap_secs = (_parse_dt(curr["timestamp"]) - _parse_dt(prev["timestamp"])).total_seconds()
+                if 0 < gap_secs < 10800:
+                    if is_target(sender_a) and not is_target(sender_b):
+                        reply_times_to_target.append(gap_secs)
+                    elif not is_target(sender_a) and is_target(sender_b):
+                        reply_times_by_target.append(gap_secs)
+                        
+        chat_summaries.append({
+            "chat_name": chat_name,
+            "chat_mode": chat_mode,
+            "total_messages": chat_total,
+            "messages_sent_by_you": chat_sent,
+            "your_share_pct": round(chat_sent / chat_total * 100, 1) if chat_total else 0
+        })
+
+    avg_reply_to_you = statistics.mean(reply_times_to_target) if reply_times_to_target else None
+    avg_reply_by_you = statistics.mean(reply_times_by_target) if reply_times_by_target else None
+
+    # Consolidated timeline
+    month_counts = defaultdict(int)
+    for chat in chats:
+        for m in chat["messages"]:
+            month_counts[_parse_dt(m["timestamp"]).strftime("%b %Y")] += 1
+            
+    seen_months = sorted(list(month_counts.keys()), key=lambda x: datetime.strptime(x, "%b %Y"))
+    monthly_timeline = [{"month": k, "count": month_counts[k]} for k in seen_months]
+
+    # Sample chronological clips around target user messages
+    chat_clips = []
+    for chat in chats:
+        messages = chat["messages"]
+        chat_name = chat["chat_name"]
+        
+        # Find indices of messages sent by target user
+        target_indices = [idx for idx, m in enumerate(messages) if is_target(m["sender"])]
+        
+        if not target_indices:
+            continue
+            
+        # Select up to 3 spread indices (start, middle, end)
+        step = max(1, len(target_indices) // 3)
+        selected_indices = target_indices[::step][:3]
+        
+        clips_for_this_chat = []
+        for idx in selected_indices:
+            start_win = max(0, idx - 3)
+            end_win = min(len(messages), idx + 4)
+            window_msgs = messages[start_win:end_win]
+            
+            clips_for_this_chat.append({
+                "clip_msgs": [
+                    {"sender": m["sender"], "text": m["text"][:200], "type": m["type"]}
+                    for m in window_msgs
+                ]
+            })
+            
+        chat_clips.append({
+            "chat_name": chat_name,
+            "clips": clips_for_this_chat
+        })
+
+    return {
+        "chat_mode": "ego",
+        "user_aliases": user_aliases,
+        "total_messages_analyzed": total_messages_all,
+        "monthly_timeline": monthly_timeline,
+        "chat_summaries": chat_summaries,
+        "ego_stats": {
+            "total_messages_sent": total_sent,
+            "overall_share_pct": round(total_sent / total_messages_all * 100, 1) if total_messages_all else 0,
+            "avg_message_length_words": round(total_words_sent / total_sent, 1) if total_sent else 0,
+            "media_sent": total_media_sent,
+            "late_night_ratio_pct": round(total_late_night / total_sent * 100, 1) if total_sent else 0,
+            "conversation_initiations": total_initiations,
+            "avg_reply_time_to_you_mins": round(avg_reply_to_you / 60, 1) if avg_reply_to_you else None,
+            "avg_reply_time_by_you_mins": round(avg_reply_by_you / 60, 1) if avg_reply_by_you else None,
+        },
+        "chat_clips": chat_clips
+    }
+
+
+
+

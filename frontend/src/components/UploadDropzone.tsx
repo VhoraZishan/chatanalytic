@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { UploadCloud, Loader2, ShieldCheck, Zap, Quote, MessageCircle, Users } from 'lucide-react';
+import { UploadCloud, Loader2, ShieldCheck, Zap, Quote, MessageCircle, Users, X } from 'lucide-react';
 
-type Mode = 'dm' | 'group' | null;
+type Mode = 'dm' | 'group' | 'ego' | null;
 
 interface Props {
   onUploadComplete: (reportData: any, mode: Mode) => void;
@@ -9,20 +9,24 @@ interface Props {
 
 export default function UploadDropzone({ onUploadComplete }: Props) {
   const [mode, setMode] = useState<Mode>(null);
+  const [userNames, setUserNames] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleUpload = async (file: File) => {
-    if (!file.name.endsWith('.txt')) {
-      setError('Please upload a .txt file exported from WhatsApp.');
-      return;
-    }
+  // Performs the actual API request
+  const executeUploadDirect = async (filesToUpload: File[]) => {
     setIsUploading(true);
     setError(null);
+
     const formData = new FormData();
-    formData.append('file', file);
+    filesToUpload.forEach(file => {
+      formData.append('files', file);
+    });
     formData.append('chat_mode', mode!);
+    formData.append('user_names', userNames);
+
     try {
       const res = await fetch('http://127.0.0.1:8000/upload', { method: 'POST', body: formData });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
@@ -35,11 +39,58 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
     }
   };
 
+  // Appends new files to the list with type checks and limits
+  const handleFilesAdded = (files: FileList | File[]) => {
+    setError(null);
+    const newFiles = Array.from(files).filter(file => {
+      if (!file.name.endsWith('.txt')) {
+        setError('Only .txt files exported from WhatsApp are supported.');
+        return false;
+      }
+      return true;
+    });
+
+    if (newFiles.length === 0) return;
+
+    if (mode === 'ego') {
+      setSelectedFiles(prev => {
+        const combined = [...prev, ...newFiles];
+        if (combined.length > 3) {
+          setError('This mode is limited to a maximum of 3 chats for token efficiency.');
+          return combined.slice(0, 3);
+        }
+        return combined;
+      });
+    } else {
+      // Direct upload for DM/Group modes
+      executeUploadDirect([newFiles[0]]);
+    }
+  };
+
+  const removeFile = (idx: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== idx));
+    setError(null);
+  };
+
+  const executeUpload = async () => {
+    if (selectedFiles.length === 0) return;
+
+    if (mode === 'ego' && !userNames.trim()) {
+      setError('Please enter target name(s) as they appear in the chats.');
+      return;
+    }
+
+    executeUploadDirect(selectedFiles);
+  };
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files?.[0]) handleUpload(e.dataTransfer.files[0]);
-  }, [mode]);
+    if (isUploading) return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesAdded(e.dataTransfer.files);
+    }
+  }, [mode, isUploading]);
 
   return (
     <div className="min-h-[calc(100vh-72px)] flex flex-col items-center justify-center py-16 px-4">
@@ -58,34 +109,64 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
       </div>
 
       {/* Step 1: Mode selector */}
-      <div className="w-full max-w-2xl mb-6">
+      <div className="w-full max-w-4xl mb-6">
         <p className="text-gray-500 text-xs uppercase tracking-widest font-semibold text-center mb-4">
           Step 1 — What kind of chat is this?
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <ModeCard
             selected={mode === 'dm'}
-            onClick={() => setMode('dm')}
+            onClick={() => { setMode('dm'); setSelectedFiles([]); setError(null); }}
             icon={<MessageCircle className="w-7 h-7" />}
             title="DM / Personal Chat"
             desc="1-on-1 conversation. Get a relationship analysis: who's more invested, attachment styles, red flags, compatibility verdict."
             gradient="from-pink-600 to-rose-700"
+            disabled={isUploading}
           />
           <ModeCard
             selected={mode === 'group'}
-            onClick={() => setMode('group')}
+            onClick={() => { setMode('group'); setSelectedFiles([]); setError(null); }}
             icon={<Users className="w-7 h-7" />}
             title="Group Chat"
             desc="3+ people. Get personality roasts, group dynamics, toxic pairings, notable events, and a full group verdict."
             gradient="from-indigo-600 to-violet-700"
+            disabled={isUploading}
+          />
+          <ModeCard
+            selected={mode === 'ego'}
+            onClick={() => { setMode('ego'); setSelectedFiles([]); setError(null); }}
+            icon={<Zap className="w-7 h-7" />}
+            title="What People Think of a User"
+            desc="Upload 1-3 chats containing a specific user. Get a unified analysis of their texting style, red flags, and what others think of them."
+            gradient="from-amber-600 to-orange-700"
+            disabled={isUploading}
           />
         </div>
       </div>
 
+      {/* Step 1.5: Ego user names alias input */}
+      {mode === 'ego' && !isUploading && (
+        <div className="w-full max-w-2xl mb-6 p-6 card border-orange-500/20 bg-orange-500/5 space-y-3">
+          <label className="block text-sm font-bold text-orange-300 uppercase tracking-wider">
+            Target Participant Name / Aliases
+          </label>
+          <input
+            type="text"
+            value={userNames}
+            onChange={(e) => { setUserNames(e.target.value); setError(null); }}
+            placeholder="e.g. Zishan, Zish"
+            className="w-full px-4 py-3 rounded-xl bg-gray-950 border border-gray-800 focus:border-orange-500 focus:outline-none text-white text-sm"
+          />
+          <p className="text-[11px] text-gray-500">
+            Enter the exact display names of the participant you want to analyze across these chats. Separate multiple aliases with commas.
+          </p>
+        </div>
+      )}
+
       {/* Step 2: Drop Zone — only shown after mode is selected */}
       {mode && (
         <div
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragOver={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={onDrop}
           className={`w-full max-w-2xl rounded-3xl border-2 border-dashed transition-all duration-300 flex flex-col items-center justify-center gap-5 p-10 text-center relative overflow-hidden
@@ -106,22 +187,32 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
 
           <div className="relative z-10">
             <h3 className="text-lg font-semibold text-white mb-1">
-              {isUploading ? 'Analyzing chat & generating roasts (~15 seconds)...' : 'Step 2 — Drop your WhatsApp .txt here'}
+              {isUploading
+                ? 'Analyzing chat & generating roasts (~15 seconds)...'
+                : mode === 'ego'
+                  ? 'Step 2 — Add 1 to 3 chat .txt files'
+                  : 'Step 2 — Add your WhatsApp .txt file'
+              }
             </h3>
             <p className="text-gray-500 text-sm">
-              Export from WhatsApp → Chat Settings → Export Chat (Without Media)
+              {mode === 'ego'
+                ? 'You can add multiple chats one by one, or select multiple together.'
+                : 'Export from WhatsApp → Chat Settings → Export Chat (Without Media)'
+              }
             </p>
           </div>
 
           {!isUploading && (
             <div className="relative z-10">
               <input
-                type="file" accept=".txt"
-                onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                type="file"
+                accept=".txt"
+                multiple={mode === 'ego'}
+                onChange={(e) => e.target.files && handleFilesAdded(e.target.files)}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
               <div className="px-7 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors cursor-pointer text-sm">
-                Browse Files
+                Add File
               </div>
             </div>
           )}
@@ -134,8 +225,57 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
         </div>
       )}
 
+      {/* Selected Files List & GO Button */}
+      {mode === 'ego' && selectedFiles.length > 0 && (
+        <div className="w-full max-w-2xl mt-8 space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-gray-500 text-xs uppercase tracking-widest font-semibold">
+              Selected Files ({selectedFiles.length})
+            </p>
+            {!isUploading && (
+              <button
+                onClick={() => setSelectedFiles([])}
+                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          
+          <div className="space-y-2">
+            {selectedFiles.map((file, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] animate-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2.5 truncate">
+                  <span className="w-5 h-5 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-[10px] font-mono font-bold text-indigo-400">
+                    {idx + 1}
+                  </span>
+                  <span className="text-sm text-gray-300 truncate font-medium">{file.name}</span>
+                </div>
+                {!isUploading && (
+                  <button
+                    onClick={() => removeFile(idx)}
+                    className="text-gray-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {!isUploading && (
+            <button
+              onClick={executeUpload}
+              className="w-full py-4.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black tracking-wider uppercase shadow-xl shadow-indigo-500/15 hover:shadow-indigo-500/25 transition-all text-sm cursor-pointer text-center"
+            >
+              🚀 Go!
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Feature pills */}
-      <div className="flex flex-wrap justify-center gap-3 mt-10">
+      <div className="flex flex-wrap justify-center gap-3 mt-12">
         {[
           { icon: <ShieldCheck className="w-4 h-4" />, text: '100% Local — data never leaves your machine' },
           { icon: <Zap className="w-4 h-4" />, text: 'Reads actual messages in any language' },
@@ -150,11 +290,13 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
   );
 }
 
-function ModeCard({ selected, onClick, icon, title, desc, gradient }: any) {
+function ModeCard({ selected, onClick, icon, title, desc, gradient, disabled }: any) {
   return (
     <button
       onClick={onClick}
-      className={`text-left p-6 rounded-2xl border-2 transition-all duration-200 relative overflow-hidden group
+      disabled={disabled}
+      className={`text-left p-6 rounded-2xl border-2 transition-all duration-200 relative overflow-hidden group w-full cursor-pointer
+        ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
         ${selected
           ? `border-transparent bg-gradient-to-br ${gradient} shadow-xl shadow-indigo-500/20`
           : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]'

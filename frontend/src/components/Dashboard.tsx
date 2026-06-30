@@ -11,7 +11,11 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
   const data = reportData;
   const roast = data.ai_roast || {};
   const profiles = data.user_profiles || {};
-  const isDM = (data.chat_mode || mode) === 'dm';
+  const chatMode = data.chat_mode || mode;
+  const isDM = chatMode === 'dm';
+  const isEgo = chatMode === 'ego';
+  const isGroup = !isDM && !isEgo;
+  const targetName = data.user_aliases?.[0] || 'Target';
 
   return (
     <div className="max-w-5xl mx-auto space-y-16 pb-20 animate-in fade-in duration-500">
@@ -20,14 +24,18 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
       <div className="text-center pt-4 space-y-3">
         <p className="text-gray-500 text-sm font-mono">{data.date_range}</p>
         <h2 className="text-4xl md:text-5xl font-black text-white leading-tight">
-          {roast.chat_title || (isDM ? 'DM Analysis' : 'Group Chat Analysis')}
+          {roast.chat_title || (isDM ? 'DM Analysis' : isEgo ? 'User Profile' : 'Group Chat Analysis')}
         </h2>
-        <p className="text-gray-500 text-sm">{data.participants?.join(' · ')}</p>
+        <p className="text-gray-500 text-sm">
+          {isEgo 
+            ? `${targetName}'s Profile across ${data.chat_summaries?.length} chats`
+            : data.participants?.join(' · ')
+          }
+        </p>
         <div className="flex justify-center gap-4 pt-4 flex-wrap">
-          <Stat icon={<MessageSquare className="w-4 h-4" />} value={data.total_messages?.toLocaleString()} label="Total Messages" />
-          <Stat icon={<Users className="w-4 h-4" />} value={data.participants?.length} label="Participants" />
+          <Stat icon={<MessageSquare className="w-4 h-4" />} value={(isEgo ? data.total_messages_analyzed : data.total_messages)?.toLocaleString()} label="Total Messages" />
+          {!isEgo && <Stat icon={<Users className="w-4 h-4" />} value={data.participants?.length} label="Participants" />}
           <Stat icon={<CalendarDays className="w-4 h-4" />} value={data.monthly_timeline?.length} label="Months Active" />
-          <Stat icon={<Flame className="w-4 h-4" />} value={roast.hot_moment_summaries?.length || 0} label="Notable Events" />
         </div>
         <div className="pt-4">
           <button
@@ -141,7 +149,7 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
       {/* ════════════════════════════════════════
           GROUP MODE SECTIONS
       ════════════════════════════════════════ */}
-      {!isDM && (
+      {isGroup && (
         <>
           {/* Group Essence */}
           {roast.group_essence && (
@@ -188,6 +196,142 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
         </>
       )}
 
+      {/* ════════════════════════════════════════
+          EGO MODE SECTIONS
+      ════════════════════════════════════════ */}
+      {isEgo && (
+        <>
+          {/* What they think of target */}
+          {roast.ego_essence && (
+            <Section title={`What People Think of ${targetName}`}>
+              <div className="card p-8 space-y-4">
+                <p className="text-gray-300 text-xl leading-relaxed font-medium">{roast.ego_essence}</p>
+                {roast.compatibility_verdict && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                    <Heart className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                    <p className="text-amber-300 font-semibold text-lg italic">{roast.compatibility_verdict}</p>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Core Roast Card */}
+          {roast.roast && (
+            <Section title="The Verdict 💀">
+              <div className="card p-8 md:p-12 relative overflow-hidden border-red-500/20 glow-red">
+                <div className="absolute -top-8 -right-8 opacity-5"><Skull className="w-48 h-48" /></div>
+                <p className="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
+                  "{roast.roast}"
+                </p>
+                {roast.iconic_quote && (
+                  <div className="mt-6 flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
+                    <span className="text-gray-600 text-lg flex-shrink-0">“</span>
+                    <p className="text-gray-400 text-sm italic leading-relaxed">"${roast.iconic_quote}"</p>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Psychological Profile */}
+          {roast.personality_summary && (
+            <Section title="Psychological Profile">
+              <div className="card p-8 space-y-6">
+                <p className="text-gray-300 leading-relaxed text-lg">{roast.personality_summary}</p>
+                
+                {data.ego_stats && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/5">
+                    <MiniStat label="Total Sent" value={data.ego_stats.total_messages_sent} />
+                    <MiniStat label="Share" value={`${data.ego_stats.overall_share_pct}%`} />
+                    <MiniStat label="Avg Length" value={`${data.ego_stats.avg_message_length_words} words`} />
+                    <MiniStat label="Late Night" value={`${data.ego_stats.late_night_ratio_pct}%`} />
+                    <MiniStat label="Initiations" value={data.ego_stats.conversation_initiations} />
+                    <MiniStat label={`Reply to ${targetName}`} value={data.ego_stats.avg_reply_time_to_you_mins ? `${data.ego_stats.avg_reply_time_to_you_mins}m` : 'N/A'} />
+                    <MiniStat label={`Reply by ${targetName}`} value={data.ego_stats.avg_reply_time_by_you_mins ? `${data.ego_stats.avg_reply_time_by_you_mins}m` : 'N/A'} />
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Flags */}
+          {roast.flags?.length > 0 && (
+            <Section title="Flags 🚩">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {roast.flags.map((f: any, i: number) => {
+                  const isRed = typeof f === 'object' 
+                    ? f.type === 'red' 
+                    : String(f).toLowerCase().includes('red');
+                  
+                  const behavior = typeof f === 'object' 
+                    ? f.behavior 
+                    : f;
+                    
+                  const proof = typeof f === 'object' 
+                    ? f.proof 
+                    : '';
+
+                  return (
+                    <div 
+                      key={i} 
+                      className={`card p-5 border ${isRed ? 'border-red-500/20 bg-red-500/5 glow-red' : 'border-emerald-500/20 bg-emerald-500/5 glow-indigo'}`}
+                    >
+                      <h4 className={`text-sm font-bold uppercase tracking-wider ${isRed ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {isRed ? '🚩 Red Flag' : '✅ Green Flag'}: {behavior}
+                      </h4>
+                      {proof && (
+                        <p className="text-gray-400 text-sm leading-relaxed mt-2 italic">
+                          "{proof}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
+          {/* Social Circles Breakdown */}
+          {data.chat_summaries?.length > 0 && (
+            <Section title="Social Circles Breakdown">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {data.chat_summaries.map((summary: any, i: number) => (
+                  <div key={i} className="card p-5 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-white font-bold text-base truncate">{summary.chat_name}</h4>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full
+                        ${summary.chat_mode === 'dm' ? 'bg-pink-500/15 text-pink-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                        {summary.chat_mode === 'dm' ? 'DM' : 'Group'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-black/20 p-2 rounded-lg border border-white/5">
+                        <p className="text-gray-500">Sent by {targetName}</p>
+                        <p className="text-white font-bold font-mono text-sm mt-0.5">{summary.messages_sent_by_you}</p>
+                      </div>
+                      <div className="bg-black/20 p-2 rounded-lg border border-white/5">
+                        <p className="text-gray-500">Share %</p>
+                        <p className="text-white font-bold font-mono text-sm mt-0.5">{summary.your_share_pct}%</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Dynamics Summary */}
+          {roast.dynamics_summary && (
+            <Section title="Social Dynamics Readout">
+              <div className="card p-6">
+                <p className="text-gray-300 leading-relaxed text-[15px]">{roast.dynamics_summary}</p>
+              </div>
+            </Section>
+          )}
+        </>
+      )}
+
       {/* ── Notable Events (both modes) ── */}
       {roast.hot_moment_summaries?.length > 0 && (
         <Section title="Notable Events 🔥">
@@ -226,6 +370,15 @@ function Stat({ icon, value, label }: any) {
       <span className="text-indigo-400">{icon}</span>
       <span className="font-mono font-bold text-white">{value}</span>
       <span className="text-gray-500 text-sm">{label}</span>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string, value: any }) {
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.05] rounded-xl p-3 text-center">
+      <p className="font-mono font-bold text-sm text-white">{value}</p>
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">{label}</p>
     </div>
   );
 }
