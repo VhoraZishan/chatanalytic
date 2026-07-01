@@ -181,7 +181,6 @@ export function exportToHTML(data: any) {
     </div>
   `).join('');
 
-  // --- Notable Events ---
   const EVENT_COLORS = [
     'border-orange-500/25 bg-orange-500/5',
     'border-red-500/25 bg-red-500/5',
@@ -191,23 +190,54 @@ export function exportToHTML(data: any) {
   ];
   const flameColors = ['text-orange-400', 'text-red-400', 'text-yellow-400', 'text-pink-400', 'text-purple-400'];
 
+  const SIGNAL_LABELS: Record<string, string> = {
+    volume_spike:         '📈 Volume Spike',
+    velocity_spike:       '⚡ Velocity Spike',
+    turn_taking_collapse: '🗣 Monologue Alert',
+    response_compression: '🏓 Rapid-Fire Replies',
+    topic_cluster:        '🎯 Topic Cluster',
+  };
+  const SIGNAL_COLORS: Record<string, string> = {
+    volume_spike:         'background:rgba(249,115,22,0.15);color:#fdba74;border:1px solid rgba(249,115,22,0.25)',
+    velocity_spike:       'background:rgba(234,179,8,0.15);color:#fde047;border:1px solid rgba(234,179,8,0.25)',
+    turn_taking_collapse: 'background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.25)',
+    response_compression: 'background:rgba(6,182,212,0.15);color:#67e8f9;border:1px solid rgba(6,182,212,0.25)',
+    topic_cluster:        'background:rgba(139,92,246,0.15);color:#c4b5fd;border:1px solid rgba(139,92,246,0.25)',
+  };
+
   const eventsHTML = (roast.hot_moment_summaries || []).map((ev: any, idx: number) => {
     const colorClass = EVENT_COLORS[idx % EVENT_COLORS.length];
     const flameColor = flameColors[idx % flameColors.length];
+    const signals: string[] = ev.signals || [];
+    const preCtx: any[] = ev.pre_context || [];
+    const signalBadges = signals.map(sig => {
+      const lbl = SIGNAL_LABELS[sig] || sig;
+      const style = SIGNAL_COLORS[sig] || 'background:rgba(255,255,255,0.05);color:#9ca3af;border:1px solid rgba(255,255,255,0.1)';
+      return `<span style="${style};font-size:11px;font-weight:600;padding:2px 10px;border-radius:9999px;display:inline-block;margin:2px 2px 2px 0">${lbl}</span>`;
+    }).join('');
+    const preCtxHTML = preCtx.length ? `
+      <details style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:12px;color:#6b7280">Show lead-up (${preCtx.length} msgs)</summary>
+        <div style="margin-top:8px;border-left:2px solid rgba(255,255,255,0.08);padding-left:12px">
+          ${preCtx.map((m: any) => `<p style="font-size:12px;color:#6b7280;margin:4px 0"><span style="color:#9ca3af;font-weight:600">${m.sender}:</span> ${m.text}</p>`).join('')}
+        </div>
+      </details>` : '';
     return `
       <div class="card ${colorClass} p-6 space-y-4 border">
-        <div class="flex items-start justify-between gap-4">
-          <div class="space-y-1 min-w-0">
-            <p class="text-gray-500 text-xs font-mono">${ev.date}</p>
-            <h4 class="text-white font-bold text-lg">${ev.event_title}</h4>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+          <div style="min-width:0">
+            <p style="color:#6b7280;font-size:12px;font-family:monospace">${ev.date}${ev.time_tag ? ` · ${ev.time_tag}` : ''}${ev.caps_detected ? ' ⚠ CAPS' : ''}</p>
+            <h4 style="color:white;font-weight:700;font-size:18px;margin-top:4px">${ev.event_title}</h4>
           </div>
-          <span class="text-lg ${flameColor}">🔥</span>
+          <span class="${flameColor}" style="font-size:20px;flex-shrink:0">🔥</span>
         </div>
-        <p class="text-gray-300 text-sm leading-relaxed">${ev.summary}</p>
+        ${signalBadges ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${signalBadges}</div>` : ''}
+        <p style="color:#d1d5db;font-size:14px;line-height:1.6">${ev.summary}</p>
+        ${preCtxHTML}
         ${ev.iconic_moment ? `
-          <div class="flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
-            <svg class="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
-            <p class="text-gray-400 text-sm italic leading-relaxed">"${ev.iconic_moment}"</p>
+          <div style="display:flex;gap:12px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.05);border-radius:12px;padding:16px">
+            <svg style="width:16px;height:16px;color:#4b5563;flex-shrink:0;margin-top:2px" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
+            <p style="color:#9ca3af;font-size:14px;font-style:italic;line-height:1.6">"${ev.iconic_moment}"</p>
           </div>
         ` : ''}
       </div>
@@ -422,9 +452,15 @@ export function exportToHTML(data: any) {
           <div class="card p-8 space-y-4">
             <p class="text-gray-300 text-xl leading-relaxed font-medium">${roast.relationship_essence}</p>
             ${roast.compatibility_verdict ? `
-              <div class="flex items-center gap-3 pt-2 border-t border-white/5">
-                <span class="text-pink-400">♥</span>
-                <p class="text-pink-300 font-semibold text-lg italic">${roast.compatibility_verdict}</p>
+              <div style="display:flex;align-items:center;gap:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.05)">
+                <span style="color:#f472b6">♥</span>
+                <p style="color:#f9a8d4;font-weight:600;font-size:18px;font-style:italic">${roast.compatibility_verdict}</p>
+              </div>
+            ` : ''}
+            ${roast.verdict ? `
+              <div style="display:flex;align-items:center;gap:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.05)">
+                <span style="color:#f87171">💀</span>
+                <p style="color:#fca5a5;font-weight:600;font-style:italic">${roast.verdict}</p>
               </div>
             ` : ''}
           </div>
@@ -493,6 +529,7 @@ export function exportToHTML(data: any) {
             <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
               "${roast.group_roast}"
             </p>
+            ${roast.verdict ? `<p style="margin-top:16px;color:#fca5a5;font-weight:600;font-style:italic;font-size:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08)">💀 ${roast.verdict}</p>` : ''}
           </div>
         </div>
       ` : ''}
@@ -527,12 +564,36 @@ export function exportToHTML(data: any) {
     </div>
   ` : ''}
 
-  <!-- Timeline narrative (Both Modes) -->
-  ${roast.group_timeline_narrative ? `
+  <!-- The Story So Far (chapter_narrative) -->
+  ${roast.chapter_narrative?.length > 0 ? `
     <div class="space-y-5">
-      <h3 class="text-2xl font-bold text-white">The Full Story 📖</h3>
-      <div class="card p-8">
-        <p class="text-gray-300 leading-relaxed text-lg">${roast.group_timeline_narrative}</p>
+      <h3 class="text-2xl font-bold text-white">The Story So Far 📖</h3>
+      <div style="position:relative">
+        <div style="position:absolute;left:20px;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.05)" class="hidden sm:block"></div>
+        <div class="space-y-4">
+          ${(roast.chapter_narrative as any[]).map((ch: any) => {
+            const emojis: Record<string, string> = { setup: '🌱', rising: '📈', peak: '🔥', aftermath: '🌅' };
+            const colors: Record<string, { badge: string; border: string; text: string }> = {
+              setup:    { badge: 'color:#34d399', border: 'border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.07)', text: 'color:#34d399' },
+              rising:   { badge: 'color:#fbbf24', border: 'border-color:rgba(251,191,36,0.25);background:rgba(251,191,36,0.07)',  text: 'color:#fbbf24' },
+              peak:     { badge: 'color:#f87171', border: 'border-color:rgba(248,113,113,0.25);background:rgba(248,113,113,0.07)', text: 'color:#f87171' },
+              aftermath:{ badge: 'color:#818cf8', border: 'border-color:rgba(129,140,248,0.25);background:rgba(129,140,248,0.07)', text: 'color:#818cf8' },
+            };
+            const c = colors[ch.phase] || { badge: 'color:#9ca3af', border: 'border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)', text: 'color:#9ca3af' };
+            return `
+              <div style="display:flex;gap:16px;align-items:flex-start">
+                <div style="flex-shrink:0;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:18px;position:relative;z-index:1">${emojis[ch.phase] || '📌'}</div>
+                <div class="card" style="flex:1;padding:20px;border:1px solid;${c.border}">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;${c.text}">${ch.phase}</span>
+                    <span style="color:white;font-weight:700;font-size:14px">${ch.title}</span>
+                  </div>
+                  <p style="color:#9ca3af;font-size:14px;line-height:1.6">${ch.description}</p>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
       </div>
     </div>
   ` : ''}

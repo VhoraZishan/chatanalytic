@@ -24,11 +24,20 @@ def generate_report_commentary(analytics_payload: dict, chat_mode: str = "group"
     # Format hot moment samples inline (readable, token-efficient)
     hot_moments_readable = []
     for hm in analytics_payload.get("hot_moments", []):
+        signals_str = ", ".join(hm.get("signals", [])) or "general_spike"
+        time_str = hm.get("time_tag", "")
+        caps_str = " [CAPS DETECTED]" if hm.get("caps_detected") else ""
+        pre_ctx = hm.get("pre_context", [])
+        pre_text = "\n".join(f"  BEFORE [{m['sender']}]: {m['text']}" for m in pre_ctx)
         msgs_text = "\n".join(
             f"  [{m['sender']}]: {m['text']}"
             for m in hm.get("sample_messages", [])
         )
-        hot_moments_readable.append(f"[{hm['date']} — {hm['message_count']} msgs]\n{msgs_text}")
+        block = f"[{hm['date']} {time_str} — {hm['message_count']} msgs | signals: {signals_str}{caps_str}]"
+        if pre_text:
+            block += f"\nLEAD-UP:\n{pre_text}"
+        block += f"\nBURST:\n{msgs_text}"
+        hot_moments_readable.append(block)
 
     # Format evenly spread sample (no media/system msgs)
     spread_sample_text = "\n".join(
@@ -107,7 +116,29 @@ OUTPUT THIS EXACT JSON (raw JSON only, absolutely no markdown fences or backtick
     }}
   ],
   "dynamics_summary": "A 2-3 sentence analysis of their response time matrix. Do they chase people? Do they ignore people?",
-  "group_timeline_narrative": "A short summary of their text frequency timeline. Did they peak and die? Are they a consistent spammer?"
+  "verdict": "One brutal final verdict sentence about this person's overall messaging persona across these chats.",
+  "chapter_narrative": [
+    {{
+      "phase": "setup",
+      "title": "Short catchy title for the opening chapter (e.g. 'The Arrival')",
+      "description": "2-3 sentences on the early phase of their messaging history in these chats."
+    }},
+    {{
+      "phase": "rising",
+      "title": "Title for their rising/active phase",
+      "description": "2-3 sentences on when things picked up."
+    }},
+    {{
+      "phase": "peak",
+      "title": "Title for their peak activity / most chaotic period",
+      "description": "2-3 sentences on their most intense period."
+    }},
+    {{
+      "phase": "aftermath",
+      "title": "Title for what happened after the peak",
+      "description": "2-3 sentences on the current state or wind-down."
+    }}
+  ]
 }}
 """
     elif chat_mode == "dm":
@@ -150,12 +181,35 @@ OUTPUT THIS EXACT JSON (raw JSON only, absolutely no markdown fences or backtick
   "hot_moment_summaries": [
     {{
       "date": "Same date string as provided",
-      "event_title": "What happened here?",
-      "summary": "2-3 sentences on what actually happened.",
+      "time_tag": "Same time_tag as provided (HH:MM)",
+      "event_title": "What happened here? Make it a punchy headline.",
+      "summary": "2-3 sentences on what actually happened. Reference the lead-up context if relevant.",
       "iconic_moment": "Best quote or exchange from this moment."
     }}
   ],
-  "group_timeline_narrative": "A paragraph on how this relationship/conversation evolved over time based on the monthly data. Was it intense at first then died? Did it have peaks and valleys?"
+  "verdict": "One brutal, specific final verdict on this relationship — what IS it, really, at its core?",
+  "chapter_narrative": [
+    {{
+      "phase": "setup",
+      "title": "Short catchy title for the opening chapter of this relationship",
+      "description": "2-3 sentences on how this all started."
+    }},
+    {{
+      "phase": "rising",
+      "title": "Title for when things started heating up",
+      "description": "2-3 sentences on the escalation."
+    }},
+    {{
+      "phase": "peak",
+      "title": "Title for the peak / most chaotic period",
+      "description": "2-3 sentences on the most intense moments."
+    }},
+    {{
+      "phase": "aftermath",
+      "title": "Title for where things stand now",
+      "description": "2-3 sentences on the current state of this dynamic."
+    }}
+  ]
 }}
 """
     else:
@@ -194,12 +248,35 @@ OUTPUT THIS EXACT JSON (raw JSON only, absolutely no markdown fences or backtick
   "hot_moment_summaries": [
     {{
       "date": "Same date string as provided",
+      "time_tag": "Same time_tag as provided (HH:MM)",
       "event_title": "A catchy name for this drama/event",
-      "summary": "2-3 sentences on what actually happened. Be specific.",
+      "summary": "2-3 sentences on what actually happened. Be specific. Reference the lead-up context if it tells you why it happened.",
       "iconic_moment": "The single best quote or exchange from this event that captures the chaos."
     }}
   ],
-  "group_timeline_narrative": "One paragraph story of how the group evolved month by month. When was it most alive? When did it go quiet? Was there a turning point? Reference the monthly count data."
+  "verdict": "One savage, specific final verdict on this group — what is this group, really, in 1-2 sentences?",
+  "chapter_narrative": [
+    {{
+      "phase": "setup",
+      "title": "Catchy title for the group's origin / early days",
+      "description": "2-3 sentences on how the group started and what the early vibe was."
+    }},
+    {{
+      "phase": "rising",
+      "title": "Title for when the group really got going",
+      "description": "2-3 sentences on the most active, chaotic, or eventful phase."
+    }},
+    {{
+      "phase": "peak",
+      "title": "Title for the group's peak drama / peak activity",
+      "description": "2-3 sentences on the wildest period. Name names if relevant."
+    }},
+    {{
+      "phase": "aftermath",
+      "title": "Title for where the group stands today",
+      "description": "2-3 sentences on the current state. Is it dying? Thriving? On life support?"
+    }}
+  ]
 }}
 """
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import UploadDropzone from './components/UploadDropzone';
 import Dashboard from './components/Dashboard';
 
-type Mode = 'dm' | 'group' | null;
+type Mode = 'dm' | 'group' | 'ego' | null;
 
 function App() {
   const [reportData, setReportData] = useState<any>(null);

@@ -1,11 +1,11 @@
-import { Loader2, Skull, MessageSquare, Users, CalendarDays, Flame, Heart, AlertTriangle, CheckCircle, Download } from 'lucide-react';
+import { Skull, MessageSquare, Users, CalendarDays, Heart, AlertTriangle, CheckCircle, Download } from 'lucide-react';
 import UserRoastCard from './UserRoastCard';
 import RelationshipCard from './RelationshipCard';
 import EventCard from './EventCard';
 import ActivityChart from './ActivityChart';
 import { exportToHTML } from './htmlExporter';
 
-type Mode = 'dm' | 'group' | null;
+type Mode = 'dm' | 'group' | 'ego' | null;
 
 export default function Dashboard({ reportData, mode }: { reportData: any, mode: Mode }) {
   const data = reportData;
@@ -59,7 +59,7 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
       ════════════════════════════════════════ */}
       {isDM && (
         <>
-          {/* Relationship Essence */}
+          {/* DM Relationship Essence + Verdict */}
           {roast.relationship_essence && (
             <Section title="What Is This?">
               <div className="card p-8 space-y-4">
@@ -68,6 +68,12 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
                   <div className="flex items-center gap-3 pt-2 border-t border-white/5">
                     <Heart className="w-5 h-5 text-pink-400 flex-shrink-0" />
                     <p className="text-pink-300 font-semibold text-lg italic">{roast.compatibility_verdict}</p>
+                  </div>
+                )}
+                {roast.verdict && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                    <Skull className="w-5 h-5 text-red-400 flex-shrink-0" />
+                    <p className="text-red-300 font-semibold italic">{roast.verdict}</p>
                   </div>
                 )}
               </div>
@@ -168,6 +174,11 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
                 <p className="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
                   "{roast.group_roast}"
                 </p>
+                {roast.verdict && (
+                  <p className="mt-4 text-red-300 font-semibold italic text-base relative z-10 border-t border-white/10 pt-4">
+                    💀 {roast.verdict}
+                  </p>
+                )}
               </div>
             </Section>
           )}
@@ -343,11 +354,42 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
         </Section>
       )}
 
-      {/* ── Timeline Narrative (both modes) ── */}
-      {roast.group_timeline_narrative && (
-        <Section title={isDM ? 'The Full Story 📖' : 'The Full Story 📖'}>
-          <div className="card p-8">
-            <p className="text-gray-300 leading-relaxed text-lg">{roast.group_timeline_narrative}</p>
+      {/* ── The Story So Far (chapter_narrative) ── */}
+      {roast.chapter_narrative?.length > 0 && (
+        <Section title="The Story So Far 📖">
+          <div className="relative">
+            {/* Vertical spine */}
+            <div className="absolute left-5 top-0 bottom-0 w-px bg-white/5 hidden sm:block" />
+            <div className="space-y-4">
+              {roast.chapter_narrative.map((ch: any, i: number) => {
+                const phaseEmoji: Record<string, string> = {
+                  setup: '🌱', rising: '📈', peak: '🔥', aftermath: '🌅',
+                };
+                const phaseColor: Record<string, string> = {
+                  setup:    'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+                  rising:   'text-amber-400   bg-amber-500/10   border-amber-500/20',
+                  peak:     'text-red-400     bg-red-500/10     border-red-500/20',
+                  aftermath:'text-indigo-400  bg-indigo-500/10  border-indigo-500/20',
+                };
+                const colClass = phaseColor[ch.phase] || 'text-gray-400 bg-white/5 border-white/10';
+                return (
+                  <div key={i} className="flex gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-base z-10">
+                      {phaseEmoji[ch.phase] || '📌'}
+                    </div>
+                    <div className={`card flex-1 p-5 border ${colClass.split(' ').slice(1).join(' ')}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-widest ${colClass.split(' ')[0]}`}>
+                          {ch.phase}
+                        </span>
+                        <span className="text-white font-bold text-sm">{ch.title}</span>
+                      </div>
+                      <p className="text-gray-400 text-sm leading-relaxed">{ch.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Section>
       )}

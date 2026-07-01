@@ -1,4 +1,4 @@
-import { Quote, TrendingUp, TrendingDown } from 'lucide-react';
+import { Quote } from 'lucide-react';
 
 const GRADIENTS = [
   'from-indigo-600 to-purple-700',
