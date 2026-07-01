@@ -107,38 +107,167 @@ def run_analytics(chat_data: dict) -> dict:
             })
     relationship_matrix.sort(key=lambda x: x["avg_reply_secs"])
 
-    # ── 3. Hot Day Detection (24-hour buckets) ────────────────────────────────
+    # ── 3. Multi-Signal Hot Moment Detection ─────────────────────────────────
     text_messages = [
         m for m in messages
         if m["type"] in ("text", "media") and m["text"] and m["sender"] != "SYSTEM"
     ]
 
-    day_buckets = defaultdict(list)
-    for m in text_messages:
-        day_key = _parse_dt(m["timestamp"]).strftime("%Y-%m-%d")
-        day_buckets[day_key].append(m)
+    # --- 3a. Sliding 30-minute windows every 15 minutes ---
+    if not text_messages:
+        hot_moments = []
+    else:
+        t_start = _parse_dt(text_messages[0]["timestamp"])
+        t_end   = _parse_dt(text_messages[-1]["timestamp"])
+        window_secs  = 1800   # 30-min window
+        step_secs    = 900    # slide every 15 min
+        total_secs   = max((t_end - t_start).total_seconds(), 1)
 
-    avg_day_density = len(text_messages) / max(len(day_buckets), 1)
+        # Pre-index messages by second-offset for fast windowing
+        msg_offsets = [(_parse_dt(m["timestamp"]) - t_start).total_seconds() for m in text_messages]
+        total_windows = max(1, int(total_secs // step_secs))
 
-    hot_days = sorted(
-        [(day, msgs) for day, msgs in day_buckets.items()
-         if len(msgs) >= max(20, avg_day_density * 1.8)],
-        key=lambda x: -len(x[1])
-    )[:5]
+        # Global baseline: avg messages per 30-min window
+        baseline_density = len(text_messages) / max(total_windows, 1)
 
-    hot_moments = []
-    for day, day_msgs in hot_days:
-        dt_label = datetime.strptime(day, "%Y-%m-%d").strftime("%d %b %Y")
-        step = max(1, len(day_msgs) // 30)
-        sampled = day_msgs[::step][:30]
-        hot_moments.append({
-            "date": dt_label,
-            "message_count": len(day_msgs),
-            "sample_messages": [
-                {"sender": m["sender"], "text": m["text"][:200]}
-                for m in sampled
-            ],
-        })
+        # --- Signal helpers ---
+        def _caps_ratio(msgs):
+            caps = sum(1 for m in msgs if m.get("text","") and m["text"].isupper() and len(m["text"]) > 3)
+            return caps / max(len(msgs), 1)
+
+        def _unique_senders(msgs):
+            return len({m["sender"] for m in msgs})
+
+        def _avg_len(msgs):
+            return statistics.mean([len(m.get("text","")) for m in msgs]) if msgs else 0
+
+        window_scores = []
+
+        pointer_start = 0
+        for w in range(total_windows):
+            w_start_sec = w * step_secs
+            w_end_sec   = w_start_sec + window_secs
+
+            # Collect messages in this window
+            win_msgs = []
+            for idx, off in enumerate(msg_offsets):
+                if w_start_sec <= off < w_end_sec:
+                    win_msgs.append(text_messages[idx])
+
+            if len(win_msgs) < 5:
+                continue
+
+            signals = []
+            score   = 0
+
+            # Signal 1 – Volume spike
+            vol_ratio = len(win_msgs) / max(baseline_density, 1)
+            if vol_ratio >= 2.5:
+                signals.append("volume_spike")
+                score += min(vol_ratio / 2.5, 3.0)
+
+            # Signal 2 – Velocity spike (>= 4 msgs within any 3-min stretch)
+            sorted_win = sorted(win_msgs, key=lambda m: _parse_dt(m["timestamp"]))
+            for vi in range(len(sorted_win) - 3):
+                burst_gap = (_parse_dt(sorted_win[vi+3]["timestamp"]) - _parse_dt(sorted_win[vi]["timestamp"])).total_seconds()
+                if burst_gap <= 180:
+                    signals.append("velocity_spike")
+                    score += 1.5
+                    break
+
+            # Signal 3 – Turn-taking collapse (same sender >=4 consecutive)
+            max_run = 1
+            cur_run = 1
+            for vi in range(1, len(sorted_win)):
+                if sorted_win[vi]["sender"] == sorted_win[vi-1]["sender"]:
+                    cur_run += 1
+                    max_run = max(max_run, cur_run)
+                else:
+                    cur_run = 1
+            if max_run >= 4:
+                signals.append("turn_taking_collapse")
+                score += 1.2
+
+            # Signal 4 – Response compression (avg reply gap < 45s)
+            gaps = []
+            for vi in range(1, len(sorted_win)):
+                if sorted_win[vi]["sender"] != sorted_win[vi-1]["sender"]:
+                    g = (_parse_dt(sorted_win[vi]["timestamp"]) - _parse_dt(sorted_win[vi-1]["timestamp"])).total_seconds()
+                    if 0 < g < 300:
+                        gaps.append(g)
+            if gaps and statistics.mean(gaps) < 45:
+                signals.append("response_compression")
+                score += 1.3
+
+            # Signal 5 – Topic cluster (short avg message length = rapid-fire pings)
+            avg_l = _avg_len(win_msgs)
+            if avg_l < 40 and len(win_msgs) >= 8:
+                signals.append("topic_cluster")
+                score += 1.0
+
+            if signals:
+                caps = _caps_ratio(win_msgs) > 0.1
+                window_scores.append({
+                    "w_start_sec": w_start_sec,
+                    "win_msgs":    win_msgs,
+                    "signals":     list(dict.fromkeys(signals)),  # dedupe, preserve order
+                    "score":       round(score, 2),
+                    "caps":        caps,
+                })
+
+        # --- 3b. Merge overlapping windows and pick top 6 ---
+        window_scores.sort(key=lambda x: -x["score"])
+
+        selected = []
+        for ws in window_scores:
+            overlap = any(
+                abs(ws["w_start_sec"] - sel["w_start_sec"]) < step_secs * 2
+                for sel in selected
+            )
+            if not overlap:
+                selected.append(ws)
+            if len(selected) >= 6:
+                break
+
+        # --- 3c. Build hot_moments payload ---
+        hot_moments = []
+        for ws in selected:
+            w_dt = t_start + timedelta(seconds=ws["w_start_sec"])
+            date_label = w_dt.strftime("%d %b %Y")
+            time_tag   = w_dt.strftime("%H:%M")
+
+            win_msgs = ws["win_msgs"]
+            # Sample up to 25 msgs from the window for LLM context
+            step_s = max(1, len(win_msgs) // 25)
+            sample = win_msgs[::step_s][:25]
+
+            # Pre-context: 5 messages before the window
+            first_off = ws["w_start_sec"]
+            pre_ctx = [
+                text_messages[idx]
+                for idx, off in enumerate(msg_offsets)
+                if first_off - 600 <= off < first_off
+            ][-5:]
+
+            hot_moments.append({
+                "date":          date_label,
+                "time_tag":      time_tag,
+                "message_count": len(win_msgs),
+                "signals":       ws["signals"],
+                "signal_score":  ws["score"],
+                "caps_detected": ws["caps"],
+                "pre_context": [
+                    {"sender": m["sender"], "text": m["text"][:150]}
+                    for m in pre_ctx
+                ],
+                "sample_messages": [
+                    {"sender": m["sender"], "text": m["text"][:200]}
+                    for m in sample
+                ],
+            })
+
+        # Sort chronologically for display
+        hot_moments.sort(key=lambda x: x["date"])
 
     # ── 4. Monthly Timeline ────────────────────────────────────────────────────
     month_counts = defaultdict(int)
