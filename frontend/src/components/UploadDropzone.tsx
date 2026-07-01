@@ -136,8 +136,8 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
             selected={mode === 'ego'}
             onClick={() => { setMode('ego'); setSelectedFiles([]); setError(null); }}
             icon={<Zap className="w-7 h-7" />}
-            title="What People Think of a User"
-            desc="Upload 1-3 chats containing a specific user. Get a unified analysis of their texting style, red flags, and what others think of them."
+            title="What People Think of You"
+            desc="Upload 1-3 chats containing your messages. Get a unified analysis of your texting style, red flags, and what others think of you."
             gradient="from-amber-600 to-orange-700"
             disabled={isUploading}
           />
@@ -148,7 +148,7 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
       {mode === 'ego' && !isUploading && (
         <div className="w-full max-w-2xl mb-6 p-6 card border-orange-500/20 bg-orange-500/5 space-y-3">
           <label className="block text-sm font-bold text-orange-300 uppercase tracking-wider">
-            Target Participant Name / Aliases
+            Your Name / Aliases in the Chats
           </label>
           <input
             type="text"
@@ -158,7 +158,7 @@ export default function UploadDropzone({ onUploadComplete }: Props) {
             className="w-full px-4 py-3 rounded-xl bg-gray-950 border border-gray-800 focus:border-orange-500 focus:outline-none text-white text-sm"
           />
           <p className="text-[11px] text-gray-500">
-            Enter the exact display names of the participant you want to analyze across these chats. Separate multiple aliases with commas.
+            Enter the exact display names you use in these chats. Separate multiple aliases with commas.
           </p>
         </div>
       )}

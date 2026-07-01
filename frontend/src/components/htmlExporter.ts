@@ -131,33 +131,6 @@ export function exportToHTML(data: any) {
     `;
   }).join('') : '';
 
-  // --- Red/Green Flags (DM mode) ---
-  const redFlagsHTML = (isDM && roast.red_flags || []).map((f: string) => `
-    <li class="text-sm text-gray-400 leading-relaxed flex gap-2">
-      <span class="text-red-500 flex-shrink-0">🚩</span> ${f}
-    </li>
-  `).join('');
-
-  const greenFlagsHTML = (isDM && roast.green_flags || []).map((f: string) => `
-    <li class="text-sm text-gray-400 leading-relaxed flex gap-2">
-      <span class="text-emerald-500 flex-shrink-0">✅</span> ${f}
-    </li>
-  `).join('');
-
-  // --- Behavioral Flags (Ego mode) ---
-  const egoFlagsHTML = (isEgo && roast.flags || []).map((f: any) => {
-    const isRed = typeof f === 'object' ? f.type === 'red' : String(f).toLowerCase().includes('red');
-    const behavior = typeof f === 'object' ? f.behavior : f;
-    const proof = typeof f === 'object' ? f.proof : '';
-    return `
-      <div class="card p-5 border ${isRed ? 'border-red-500/25 bg-red-500/5' : 'border-emerald-500/25 bg-emerald-500/5'} space-y-2">
-        <h4 class="text-sm font-bold uppercase tracking-wider ${isRed ? 'text-red-400' : 'text-emerald-400'}">
-          ${isRed ? '🚩 Red Flag' : '✅ Green Flag'}: ${behavior}
-        </h4>
-        ${proof ? `<p class="text-gray-400 text-sm leading-relaxed mt-2 italic">"${proof}"</p>` : ''}
-      </div>
-    `;
-  }).join('');
 
   // --- Social Circles Breakdown (Ego mode) ---
   const socialCirclesHTML = (isEgo && data.chat_summaries || []).map((summary: any) => `
@@ -359,6 +332,7 @@ export function exportToHTML(data: any) {
           <p class="text-xl md:text-2xl font-semibold text-white leading-relaxed italic">
             "${roast.roast}"
           </p>
+          ${roast.verdict ? `<p style="margin-top:16px;color:#fca5a5;font-weight:600;font-style:italic;font-size:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08)">💀 ${roast.verdict}</p>` : ''}
           ${roast.iconic_quote ? `
             <div class="mt-6 flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
               <span class="text-gray-600 text-lg">“</span>
@@ -412,15 +386,7 @@ export function exportToHTML(data: any) {
       </div>
     ` : ''}
 
-    <!-- Behavioral Flags -->
-    ${egoFlagsHTML ? `
-      <div class="space-y-5">
-        <h3 class="text-2xl font-bold text-white">Flags 🚩</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          ${egoFlagsHTML}
-        </div>
-      </div>
-    ` : ''}
+
 
     <!-- Social Circles Breakdown -->
     ${socialCirclesHTML ? `
@@ -485,30 +451,7 @@ export function exportToHTML(data: any) {
         </div>
       ` : ''}
 
-      <!-- Flags -->
-      ${(redFlagsHTML || greenFlagsHTML) ? `
-        <div class="space-y-5">
-          <h3 class="text-2xl font-bold text-white">Flags 🚩</h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            ${redFlagsHTML ? `
-              <div class="card p-6 border-red-500/20 space-y-3">
-                <h4 class="text-red-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                  🚩 Red Flags
-                </h4>
-                <ul class="space-y-3">${redFlagsHTML}</ul>
-              </div>
-            ` : ''}
-            ${greenFlagsHTML ? `
-              <div class="card p-6 border-emerald-500/20 space-y-3">
-                <h4 class="text-emerald-400 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                  ✅ Green Flags
-                </h4>
-                <ul class="space-y-3">${greenFlagsHTML}</ul>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-      ` : ''}
+
     ` : `
       <!-- GROUP MODE Conditional Sections -->
       <!-- Group Essence -->

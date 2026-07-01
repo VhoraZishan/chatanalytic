@@ -25,7 +25,7 @@ function App() {
             {mode && (
               <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-1
                 ${mode === 'dm' ? 'bg-pink-500/15 text-pink-400' : mode === 'ego' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
-                {mode === 'dm' ? 'DM' : mode === 'ego' ? 'Profile' : 'Group'}
+                {mode === 'dm' ? 'DM' : mode === 'ego' ? 'What People Think of You' : 'Group'}
               </span>
             )}
           </div>

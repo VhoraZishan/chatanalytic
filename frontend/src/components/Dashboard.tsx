@@ -1,4 +1,4 @@
-import { Skull, MessageSquare, Users, CalendarDays, Heart, AlertTriangle, CheckCircle, Download } from 'lucide-react';
+import { Skull, MessageSquare, Users, CalendarDays, Heart, Download } from 'lucide-react';
 import UserRoastCard from './UserRoastCard';
 import RelationshipCard from './RelationshipCard';
 import EventCard from './EventCard';
@@ -114,41 +114,7 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
             </Section>
           )}
 
-          {/* Red / Green Flags */}
-          {(roast.red_flags?.length > 0 || roast.green_flags?.length > 0) && (
-            <Section title="Flags 🚩">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {roast.red_flags?.length > 0 && (
-                  <div className="card p-6 border-red-500/20 space-y-3">
-                    <h4 className="flex items-center gap-2 text-red-400 font-bold text-sm uppercase tracking-widest">
-                      <AlertTriangle className="w-4 h-4" /> Red Flags
-                    </h4>
-                    <ul className="space-y-3">
-                      {roast.red_flags.map((f: string, i: number) => (
-                        <li key={i} className="text-sm text-gray-400 leading-relaxed flex gap-2">
-                          <span className="text-red-500 flex-shrink-0 mt-0.5">🚩</span> {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {roast.green_flags?.length > 0 && (
-                  <div className="card p-6 border-emerald-500/20 space-y-3">
-                    <h4 className="flex items-center gap-2 text-emerald-400 font-bold text-sm uppercase tracking-widest">
-                      <CheckCircle className="w-4 h-4" /> Green Flags
-                    </h4>
-                    <ul className="space-y-3">
-                      {roast.green_flags.map((f: string, i: number) => (
-                        <li key={i} className="text-sm text-gray-400 leading-relaxed flex gap-2">
-                          <span className="text-emerald-500 flex-shrink-0 mt-0.5">✅</span> {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </Section>
-          )}
+
         </>
       )}
 
@@ -235,6 +201,11 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
                 <p className="text-xl md:text-2xl font-semibold text-white leading-relaxed relative z-10 italic">
                   "{roast.roast}"
                 </p>
+                {roast.verdict && (
+                  <p className="mt-4 text-red-300 font-semibold italic text-base relative z-10 border-t border-white/10 pt-4">
+                    💀 {roast.verdict}
+                  </p>
+                )}
                 {roast.iconic_quote && (
                   <div className="mt-6 flex gap-3 bg-black/20 border border-white/5 rounded-xl p-4">
                     <span className="text-gray-600 text-lg flex-shrink-0">“</span>
@@ -266,42 +237,6 @@ export default function Dashboard({ reportData, mode }: { reportData: any, mode:
             </Section>
           )}
 
-          {/* Flags */}
-          {roast.flags?.length > 0 && (
-            <Section title="Flags 🚩">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {roast.flags.map((f: any, i: number) => {
-                  const isRed = typeof f === 'object' 
-                    ? f.type === 'red' 
-                    : String(f).toLowerCase().includes('red');
-                  
-                  const behavior = typeof f === 'object' 
-                    ? f.behavior 
-                    : f;
-                    
-                  const proof = typeof f === 'object' 
-                    ? f.proof 
-                    : '';
-
-                  return (
-                    <div 
-                      key={i} 
-                      className={`card p-5 border ${isRed ? 'border-red-500/20 bg-red-500/5 glow-red' : 'border-emerald-500/20 bg-emerald-500/5 glow-indigo'}`}
-                    >
-                      <h4 className={`text-sm font-bold uppercase tracking-wider ${isRed ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {isRed ? '🚩 Red Flag' : '✅ Green Flag'}: {behavior}
-                      </h4>
-                      {proof && (
-                        <p className="text-gray-400 text-sm leading-relaxed mt-2 italic">
-                          "{proof}"
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
 
           {/* Social Circles Breakdown */}
           {data.chat_summaries?.length > 0 && (
