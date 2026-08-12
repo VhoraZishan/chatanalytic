@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from google import genai
 
 
@@ -18,8 +19,9 @@ def generate_report_commentary(analytics_payload: dict, chat_mode: str = "group"
     client = genai.Client(api_key=api_key)
 
     # ---- Build a lean payload for the LLM ----
-    stats_for_llm = {k: v for k, v in analytics_payload.items() if k != "llm_message_sample"}
-    message_sample = analytics_payload.get("llm_message_sample", [])
+    # Exclude raw cluster data from stats block to avoid duplication
+    EXCLUDE_FROM_STATS = {"llm_message_sample", "llm_message_clusters"}
+    stats_for_llm = {k: v for k, v in analytics_payload.items() if k not in EXCLUDE_FROM_STATS}
 
     # Format hot moment samples inline (readable, token-efficient)
     hot_moments_readable = []
@@ -27,23 +29,32 @@ def generate_report_commentary(analytics_payload: dict, chat_mode: str = "group"
         signals_str = ", ".join(hm.get("signals", [])) or "general_spike"
         time_str = hm.get("time_tag", "")
         caps_str = " [CAPS DETECTED]" if hm.get("caps_detected") else ""
+        silence_str = (
+            f" [re-entry after {hm['silence_hours_before']}h silence by {hm.get('re_entry_sender', '')}]"
+            if "silence_hours_before" in hm else ""
+        )
         pre_ctx = hm.get("pre_context", [])
         pre_text = "\n".join(f"  BEFORE [{m['sender']}]: {m['text']}" for m in pre_ctx)
         msgs_text = "\n".join(
             f"  [{m['sender']}]: {m['text']}"
             for m in hm.get("sample_messages", [])
         )
-        block = f"[{hm['date']} {time_str} — {hm['message_count']} msgs | signals: {signals_str}{caps_str}]"
+        block = f"[{hm['date']} {time_str} — {hm['message_count']} msgs | signals: {signals_str}{caps_str}{silence_str}]"
         if pre_text:
             block += f"\nLEAD-UP:\n{pre_text}"
         block += f"\nBURST:\n{msgs_text}"
         hot_moments_readable.append(block)
 
-    # Format evenly spread sample (no media/system msgs)
-    spread_sample_text = "\n".join(
-        f"[{m['sender']}]: {m['text']}"
-        for m in message_sample
-    )
+    # Format conversation clusters as labeled windows
+    # Each cluster is a short exchange centered on a sampled anchor point
+    clusters = analytics_payload.get("llm_message_clusters", [])
+    clusters_text_parts = []
+    for cluster in clusters:
+        lines = [f"[Window — {cluster['label']}]"]
+        for m in cluster["messages"]:
+            lines.append(f"  [{m['sender']}]: {m['text']}")
+        clusters_text_parts.append("\n".join(lines))
+    clusters_text = "\n\n".join(clusters_text_parts)
 
     data_block = f"""
 ---
@@ -51,13 +62,14 @@ BEHAVIORAL STATS:
 {json.dumps(stats_for_llm, indent=2)}
 
 ---
-REAL MESSAGES (evenly spread across full timeline):
-{spread_sample_text}
+CONVERSATION WINDOWS (evenly sampled clusters across full timeline — read these as real exchanges, not isolated lines):
+{clusters_text}
 
 ---
-HOT MOMENTS (most explosive bursts of activity):
+HOT MOMENTS (most significant bursts of activity):
 {"---".join(hot_moments_readable)}
 """
+
 
     if chat_mode == "ego":
         clips_text_list = []
@@ -286,25 +298,39 @@ OUTPUT THIS EXACT JSON (raw JSON only, absolutely no markdown fences or backtick
 """
 
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        text = response.text.strip()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            text = response.text.strip()
 
-        # Strip any accidental markdown fences
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
+            # Strip any accidental markdown fences
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
 
-        return json.loads(text.strip())
-    except Exception as e:
-        print(f"LLM Error: {e}")
-        return {}
+            return json.loads(text.strip())
+
+        except json.JSONDecodeError as e:
+            print(f"LLM JSON parse error (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+            else:
+                return {"error": "commentary_failed"}
+        except Exception as e:
+            print(f"LLM Error (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+            else:
+                return {"error": "commentary_failed"}
+
+    return {"error": "commentary_failed"}
 
 
 if __name__ == "__main__":
@@ -314,7 +340,7 @@ if __name__ == "__main__":
     from analytics import run_analytics
     print("Running analytics...")
     payload = run_analytics(1)
-    print(f"Hot moments: {len(payload.get('hot_moments', []))}, Sample msgs: {len(payload.get('llm_message_sample', []))}")
+    print(f"Hot moments: {len(payload.get('hot_moments', []))}, Clusters: {len(payload.get('llm_message_clusters', []))}")
 
     print("Generating deep roast...")
     result = generate_report_commentary(payload)

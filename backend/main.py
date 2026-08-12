@@ -20,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import uuid
 from typing import List
 
 @app.post("/upload")
@@ -45,7 +46,7 @@ async def upload_chat(
             if not file.filename.endswith('.txt'):
                 raise HTTPException(status_code=400, detail="Only .txt files are supported")
             
-            temp_path = f"temp_{file.filename}"
+            temp_path = f"temp_{uuid.uuid4().hex}_{file.filename}"
             temp_paths.append(temp_path)
             with open(temp_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
