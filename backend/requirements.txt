@@ -1,5 +1,12 @@
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-google-genai>=0.8.0
+# Chat Analytic — Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework + ASGI server
+fastapi>=0.117.1
+uvicorn>=0.37.0
+
+# Load GEMINI_API_KEY from .env file
+python-dotenv>=1.1.0
+
+# Gemini API client (google-genai SDK)
+google-genai>=2.10.0
